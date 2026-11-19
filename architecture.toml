@@ -1,0 +1,1051 @@
+# Thingino architecture diagram: all the content lives here.
+# Edit this file, then run:  python3 build.py        (full guide: architecture.md)
+#
+# ---- Writing text ----------------------------------------------------------------
+# Text fields accept a little markup: `code`, **bold**, *italic*, [link text](https://...).
+# Box titles and subtitles (title/sub) are drawn on the canvas, so keep them plain and short.
+# Placeholders fill in from the selected camera and firmware version:
+#   {camera.<field>}   any field of a [[cameras]] entry, e.g. {camera.sensor}
+#   {version.<field>}  any field of a [[versions]] entry, e.g. {version.core}
+# The build fails if a placeholder names a field that some camera or version doesn't have.
+#
+# ---- Showing things only for some cameras / versions -------------------------------
+# Any lane, node, edge, journey step, boot step or repo can carry:
+#   versions = ["thingino2"]         shown only for these firmware versions
+#   cameras  = ["wyze-cam-v4"]       shown only for these cameras
+#   needs    = ["nna"]               shown only if the camera has ALL these features
+# Nothing set = shown everywhere. A hidden lane hides its boxes; a hidden box hides its lines.
+#
+# ---- Changing a field for one version or camera -------------------------------------
+# Put a variant table right after the item:
+#   [nodes.variant.thingino1]        (or [journey.variant.<id>], [page.variant.<id>] ...)
+#   about = "text used when Thingino 1 is selected"
+# Version variants apply first, then camera variants.
+
+[page]
+title   = "Thingino Camera Anatomy"
+eyebrow = "{camera.name} · {version.name} {version.codename} · {version.core}"
+lede    = "How light hitting the sensor becomes a video stream on your network. Pick a camera and a firmware version, then read the diagram top to bottom: hardware at the top, your network at the bottom. Click any box to see what it does, how it starts at boot, and which upstream repo it comes from."
+callout = "**Settings travel the other way.** When you change a setting in the web UI, a CGI script calls `raptorctl`, which writes `/etc/raptor.conf` and sends the change to `rvd`'s control socket. `rvd` calls raptor-hal, raptor-hal calls libimp, and libimp sets the ISP or encoder register through the kernel."
+boot_foot = "Raptor starts before the network on purpose: the rings fill straight away, and the servers wait for clients. Stopping runs the other way: consumers first, `rvd` last, then the rings are deleted."
+repos_intro = "Thingino is a Buildroot tree. It doesn't contain most of this code; each package file names an upstream repo and pins a commit. Pins differ between firmware versions."
+repos_foot = "Raptor splits the streamer into small daemons so that a crash in, say, WebRTC can't stop recording or RTSP. Only `rvd` and `rad` load the closed vendor library; nothing that faces the network shares memory with the hardware code."
+# The facts row under the camera picker: [label, text]
+spec = [
+  ["SoC",      "{camera.soc} · {camera.cpu}"],
+  ["Sensor",   "{camera.sensor} · {camera.resolution}"],
+  ["Memory",   "{camera.ram}"],
+  ["Flash",    "{camera.flash}"],
+  ["Wi-Fi",    "{camera.wifi}"],
+  ["Kernel",   "Linux {camera.kernel}"],
+  ["Image",    "{camera.image}"],
+]
+
+[page.variant.thingino1]
+callout = "**Settings travel the other way.** The web UI saves your change to prudynt's config (`/etc/prudynt.user.json`, on top of the defaults in `/etc/prudynt.json`) and has prudynt apply it. prudynt calls libimp itself, and libimp sets the ISP or encoder register through the kernel."
+boot_foot = "Everything video-related starts in one step, `S31prudynt`. If prudynt stops, video, audio, RTSP and the preview all stop together."
+repos_foot = "Thingino 1 uses one program, `prudynt`, for the whole streaming job. Thingino 2 replaced it with raptor, which splits the same work into small daemons so one crash can't take everything down."
+
+# ---------------------------------------------------------------------------
+# Cameras: one entry per Thingino camera config (board + sensor + Wi-Fi chip).
+#   group    = the model name; the picker groups configs under it
+#   supports = version ids that ship a config for this camera (others are greyed out)
+#   features = capabilities that `needs = [...]` checks (e.g. "nna", "ptz", "eth")
+#   Every camera must have every field that a {camera.x} placeholder uses.
+# Facts: Thingino board configs plus /proc on real hardware (2026-11-17).
+# Other configs of the same models exist upstream (v3: T31AL/ATBM6031, RT5370;
+# v4: GC4653 sensor) and can be added the same way.
+# ---------------------------------------------------------------------------
+[[cameras]]
+id         = "wyze-cam-v4"
+name       = "Wyze Cam v4 (OS04D10)"
+group      = "Wyze Cam v4"
+image      = "wyze_cam4_t41nq_os04d10_atbm6062s"
+soc        = "Ingenic T41NQ"
+cpu        = "XBurst2, 2 cores, 1104 MHz"
+sensor     = "OmniVision OS04D10"
+resolution = "4 MP, 2560×1440"
+ram        = "128 MB: 64 MB Linux + 64 MB video"
+flash      = "16 MB SPI NOR"
+wifi       = "AltoBeam ATBM6062S (SDIO, 2.4 GHz)"
+wifi_short = "ATBM6062S"
+wifi_driver = "AltoBeam atbm driver"
+kernel     = "4.4.94"
+isp_module = "tx_isp_t41"
+encoder    = "AVPU (H.264/H.265) + JPEG"
+features   = ["nna", "speaker", "sd", "ircut", "spotlight"]
+supports   = ["thingino2", "thingino1"]
+
+[[cameras]]
+id         = "wyze-cam-v3"
+name       = "Wyze Cam v3 (RTL8189FTV)"
+group      = "Wyze Cam v3"
+image      = "wyze_cam3_t31x_gc2053_rtl8189ftv"
+soc        = "Ingenic T31X"
+cpu        = "XBurst1, 1 core, 1392 MHz"
+sensor     = "GalaxyCore GC2053"
+resolution = "2 MP, 1920×1080"
+ram        = "128 MB: 99 MB Linux + 29 MB video"
+flash      = "16 MB SPI NOR"
+wifi       = "Realtek RTL8189FTV (SDIO, 2.4 GHz)"
+wifi_short = "RTL8189FTV"
+wifi_driver = "8189fs"
+kernel     = "3.10.14"
+isp_module = "tx_isp_t31"
+encoder    = "T31 H.264/H.265 + JPEG"
+features   = ["speaker", "sd", "ircut", "pwm"]
+supports   = ["thingino2", "thingino1"]
+
+# ---------------------------------------------------------------------------
+# Firmware versions. `ref` is a git ref in the thingino-firmware clone;
+# `python3 build.py --pins` reads each version's package pins from it.
+# ---------------------------------------------------------------------------
+[[versions]]
+id       = "thingino2"
+name     = "Thingino 2"
+codename = "Figata"
+branch   = "master"
+core     = "raptor"
+config   = "/etc/raptor.conf"
+init     = "S31raptor"
+ref      = "upstream/master"
+about    = "Development line. The streamer is raptor: many small daemons sharing frames through memory."
+
+[[versions]]
+id       = "thingino1"
+name     = "Thingino 1"
+codename = "Ciao"
+branch   = "ciao"
+core     = "prudynt"
+config   = "/etc/prudynt.json"
+init     = "S31prudynt"
+ref      = "upstream/ciao"
+about    = "Stable line. The streamer is prudynt: one program that does all the video and audio work."
+
+# ---------------------------------------------------------------------------
+# Lanes: the horizontal bands, top to bottom.
+#   cols     = number of equal columns, or "auto" (= the boxes shown, at least min_cols)
+#   shape    = box (default) | pill | band
+#   height   = lane height in diagram units (default 76)
+#   tag      = label shown above a box's name in the detail card
+#   emphasis = true draws the lane's boxes in the accent colour
+#   default_starts / default_upstream / note = used by every box in the lane unless it sets its own
+# ---------------------------------------------------------------------------
+[[lanes]]
+id = "hw"
+label = "Hardware"
+sub = "on the board"
+cols = "auto"
+tag = "Hardware"
+
+[[lanes]]
+id = "kern"
+label = "Linux kernel"
+sub = "drivers (.ko)"
+cols = "auto"
+min_cols = 5
+tag = "Kernel driver"
+
+[[lanes]]
+id = "sdk"
+label = "Vendor SDK + HAL"
+sub = "libraries"
+cols = 5
+height = 66
+tag = "Library"
+
+[[lanes]]
+id = "prod"
+label = "Streamer core"
+sub = "{version.core} · {version.init}"
+cols = "auto"
+min_cols = 5
+tag = "Streamer"
+emphasis = true
+
+[[lanes]]
+id = "ring"
+versions = ["thingino2"]
+label = "Shared memory"
+sub = "/dev/shm rings"
+cols = 8
+height = 56
+shape = "pill"
+tag = "Shared-memory ring"
+default_starts = "Created by its producer (`rvd` or `rad`) at startup, and deleted by `S31raptor stop`."
+default_upstream = ["raptor-ipc"]
+note = "A ring buffer in RAM. One writer, any number of readers, each with its own read position. A slow reader only loses its own frames, and the writer never waits. Readers see the same memory the encoder wrote, so frames aren't copied."
+
+[[lanes]]
+id = "cons"
+label = "Consumers"
+sub = "read the stream"
+cols = "auto"
+min_cols = 5
+tag = "Consumer"
+
+[[lanes]]
+id = "net"
+label = "Network"
+sub = "wlan0"
+cols = 1
+height = 52
+shape = "band"
+tag = "Network"
+
+[[lanes]]
+id = "svc"
+label = "System services"
+sub = "BusyBox + friends"
+cols = 6
+height = 60
+shape = "pill"
+tag = "System service"
+
+[[lanes]]
+id = "out"
+label = "Where it ends up"
+sub = "your home"
+cols = "auto"
+min_cols = 5
+tag = "Destination"
+
+# ---------------------------------------------------------------------------
+# Nodes: one [[nodes]] block per box, left to right within a lane.
+#   id, lane, title, sub     required (sub is the small grey line)
+#   col / span               optional: start column (0-based) and width in columns
+#   kind                     colour: video | audio | control | detect
+#   color                    border colour override: video | audio | control | detect | accent
+#   about, starts            detail card text
+#   upstream                 repo ids from [[repos]]
+#   file                     path shown under "What it does"
+#   standalone = true        no connections on purpose (skips the warning)
+#   versions / cameras / needs / variant   see the top of this file
+# ---------------------------------------------------------------------------
+
+# --- hardware ---
+[[nodes]]
+id = "sensor"
+lane = "hw"
+title = "Image sensor"
+sub = "{camera.sensor}"
+about = "Turns light into numbers: {camera.resolution}. Each frame leaves the sensor as raw brightness values with no colour processing yet, and travels over a MIPI camera link into the SoC."
+starts = "Powered up and programmed by its sensor kernel module when `S11modules` loads it."
+upstream = ["ingenic-sdk"]
+
+[[nodes]]
+id = "soc"
+lane = "hw"
+title = "{camera.soc}"
+sub = "{camera.cpu}"
+about = "The main chip: a MIPS CPU plus fixed-function hardware for jobs a CPU is too slow for. That means the ISP (image processing), the video encoder ({camera.encoder}) and the IVS motion block. Programs never touch these blocks directly; they go through libimp and the kernel drivers. Memory: {camera.ram}."
+starts = "Always on. U-Boot starts it from {camera.flash}."
+upstream = []
+
+[nodes.variant.wyze-cam-v4]
+about = "The main chip: a MIPS CPU plus fixed-function hardware for jobs a CPU is too slow for. That means the ISP (image processing), the video encoder ({camera.encoder}), the IVS motion block and a neural-network accelerator (NNA). Programs never touch these blocks directly; they go through libimp and the kernel drivers. Memory: {camera.ram}."
+
+[[nodes]]
+id = "mic"
+lane = "hw"
+title = "Mic + speaker"
+sub = "audio codec in the SoC"
+about = "The microphone and speaker connect to an audio codec inside the SoC. Sound comes in as raw PCM samples and goes out the same way."
+starts = "Driven by `audio.ko` after `S11modules`."
+upstream = ["ingenic-sdk"]
+
+[[nodes]]
+id = "ircut"
+lane = "hw"
+title = "IR-cut + IR LEDs"
+sub = "switched by GPIO"
+about = "A small filter slides in front of the lens to block infrared by day (true colours) and out at night, when the infrared LEDs light the scene. Both are driven by GPIO pins, simple on/off lines on the SoC. The pin numbers are in `/etc/thingino.json`."
+starts = "`S06ircut` sets a start position; `ric` takes over once raptor runs."
+upstream = []
+
+[nodes.variant.thingino1]
+starts = "`S06ircut` sets a start position; `daynightd` takes over from `S10daynightd`."
+
+[[nodes]]
+id = "wifichip"
+lane = "hw"
+title = "Wi-Fi chip"
+sub = "{camera.wifi_short}"
+about = "{camera.wifi}. Every byte that leaves the camera goes through this radio. It is often the real bottleneck: check the actual link rate before tuning the encoder."
+starts = "`S29wlanpower` powers it; its driver creates `wlan0`."
+upstream = []
+
+# --- kernel ---
+[[nodes]]
+id = "isp"
+lane = "kern"
+title = "tx-isp + sensor"
+sub = "{camera.isp_module} + sensor .ko"
+about = "`{camera.isp_module}` drives the ISP: demosaic (raw pixels to colour), exposure, white balance, noise reduction, flip and mirror. A separate sensor module holds the register settings for the {camera.sensor}."
+starts = "Loaded by `/etc/init.d/S11modules`."
+upstream = ["ingenic-sdk"]
+
+[[nodes]]
+id = "enc"
+lane = "kern"
+title = "Video encoder"
+sub = "{camera.encoder}"
+about = "Kernel driver that hands the SoC's hardware video and JPEG encoders to libimp."
+starts = "Loaded by `S11modules`."
+upstream = ["ingenic-sdk"]
+
+[[nodes]]
+id = "nna"
+lane = "kern"
+needs = ["nna"]
+title = "soc-nna"
+sub = "neural-net accelerator"
+about = "Driver for the T41's neural-network accelerator, used for person and object detection."
+starts = "Loaded by `S11modules` when detection is set up."
+upstream = ["ingenic-sdk"]
+
+[[nodes]]
+id = "audiok"
+lane = "kern"
+title = "audio.ko"
+sub = "audio codec driver"
+about = "Kernel driver for the SoC's audio codec. libimp's audio API sits on top of it, which is what `rad` uses for microphone in and speaker out."
+starts = "Loaded by `S11modules`."
+upstream = ["ingenic-sdk"]
+
+[nodes.variant.thingino1]
+about = "Kernel driver for the SoC's audio codec. libimp's audio API sits on top of it, which is what prudynt uses for microphone in and speaker out."
+
+[[nodes]]
+id = "gpio"
+lane = "kern"
+title = "GPIO + PWM"
+sub = "Linux gpio · ingenic-pwm"
+about = "Standard Linux GPIO lines plus Ingenic's PWM driver for dimming. `ric` uses them for the IR-cut filter and IR LEDs; the LED, button and light scripts use them too."
+starts = "Built into the kernel; `S05gpio` sets defaults."
+upstream = ["kernel"]
+
+[nodes.variant.thingino1]
+about = "Standard Linux GPIO lines plus Ingenic's PWM driver for dimming. The `daynight` script (run by `daynightd`) uses them for the IR-cut filter and IR LEDs; the LED, button and light scripts use them too."
+
+[[nodes]]
+id = "wifidrv"
+lane = "kern"
+title = "Wi-Fi driver"
+sub = "{camera.wifi_driver}"
+about = "The chip maker's Wi-Fi driver ({camera.wifi_driver}), packaged in thingino as `package/wifi-*`. It creates the `wlan0` network interface."
+starts = "Loaded by `S11modules` after `S29wlanpower`."
+upstream = ["firmware"]
+
+# --- SDK + HAL ---
+[[nodes]]
+id = "libimp"
+lane = "sdk"
+span = 2
+title = "libimp"
+sub = "Ingenic IMP SDK · closed source"
+about = "Ingenic's own library and the only official way to drive the ISP, frame channels, encoders, IVS and audio. It is a closed binary, is not thread-safe, and its API changes between SoC generations. Exactly two raptor daemons load it: `rvd` and `rad`."
+starts = "Loaded into `rvd` and `rad` when they start."
+upstream = ["ingenic-lib"]
+
+[nodes.variant.thingino1]
+about = "Ingenic's own library and the only official way to drive the ISP, frame channels, encoders, IVS and audio. It is a closed binary, is not thread-safe, and its API changes between SoC generations. prudynt loads it directly, with no adapter layer in between."
+starts = "Loaded into prudynt when it starts."
+
+[[nodes]]
+id = "hal"
+lane = "sdk"
+versions = ["thingino2"]
+title = "raptor-hal"
+sub = "one API for every SoC"
+about = "Raptor's thin adapter over libimp. Each SoC generation (T10 to T41) has a slightly different libimp, and raptor-hal hides that so `rvd` and `rad` are written once."
+starts = "Compiled into `rvd` and `rad`."
+upstream = ["raptor-hal"]
+
+# --- streamer core: Thingino 2 (raptor) ---
+[[nodes]]
+id = "rvd"
+lane = "prod"
+versions = ["thingino2"]
+title = "rvd"
+sub = "video daemon"
+about = "The heart of raptor and the only daemon that owns the image pipeline. It sets up the sensor, ISP, frame channels (main at full resolution, sub small), hardware encoders, JPEG and IVS motion, then loops forever: take each encoded frame and publish it into a ring. It also blends `rod`'s OSD bitmaps into the picture and answers ISP and encoder commands on its control socket."
+starts = "First daemon in `/etc/init.d/S31raptor`. The script waits up to 5 s for `/dev/shm/rss_ring_main` and gives up if it doesn't appear, because nothing else works without it."
+upstream = ["raptor"]
+
+[[nodes]]
+id = "raptorctl"
+lane = "prod"
+versions = ["thingino2"]
+title = "raptorctl"
+sub = "command-line remote"
+about = "The remote control for every daemon. It sends commands over the Unix sockets in `/var/run/rss/` (bitrate, OSD text, day/night and so on) and reads and writes `/etc/raptor.conf`. The web UI and helper scripts (daynight, ircut, color, privacy) all call it."
+starts = "Not a daemon; it runs when something calls it."
+upstream = ["raptor"]
+
+[[nodes]]
+id = "rad"
+lane = "prod"
+versions = ["thingino2"]
+title = "rad"
+sub = "audio daemon"
+about = "Captures microphone PCM, encodes it (Opus, AAC, G.711 or L16) into the audio ring, and plays whatever is written to the speaker ring. Consumers that only speak one codec need the matching setting here."
+starts = "Second in `S31raptor`, with `LD_PRELOAD=libimp-nodbg.so` when that file exists so it doesn't start a second libimp debug thread."
+upstream = ["raptor"]
+
+[[nodes]]
+id = "rod"
+lane = "prod"
+versions = ["thingino2"]
+title = "rod"
+sub = "on-screen text"
+about = "Draws the timestamp, uptime, custom text and logo as bitmaps (with the libschrift font renderer) into a shared-memory buffer. It never touches hardware: `rvd` copies the bitmaps into the hardware OSD regions, so the text is burned into every stream."
+starts = "`S31raptor`, when `[osd]` is enabled (on by default)."
+upstream = ["raptor"]
+
+[[nodes]]
+id = "ric"
+lane = "prod"
+versions = ["thingino2"]
+title = "ric"
+sub = "day / night"
+about = "Decides day or night. It asks `rvd` for scene brightness and sensor gain, then switches the IR-cut filter and IR LEDs over GPIO and tells `rvd` to put the ISP in night (greyscale) mode. It uses different rules for each direction so it doesn't flip back and forth at dusk."
+starts = "`S31raptor`, when `[ircut]` is enabled (on by default)."
+upstream = ["raptor"]
+
+# --- streamer core: Thingino 1 (prudynt) ---
+[[nodes]]
+id = "prudynt"
+lane = "prod"
+versions = ["thingino1"]
+span = 3
+title = "prudynt"
+sub = "one program does the whole stream"
+about = "Thingino 1's streamer. One program does what raptor splits across many daemons: it drives libimp directly (no raptor-hal), sets up the sensor and encoders, encodes video and audio, draws the timestamp, runs motion detection and serves RTSP itself. Builds with WebSockets also feed the web UI's live preview. It's simpler, but a crash or SDK hang stops everything at once."
+starts = "`/etc/init.d/S31prudynt`. The script also moves old config files to the split layout: defaults in `/etc/prudynt.json`, your changes in `/etc/prudynt.user.json`."
+upstream = ["prudynt"]
+
+[[nodes]]
+id = "daynightd"
+lane = "prod"
+versions = ["thingino1"]
+title = "daynightd"
+sub = "day / night"
+about = "A small daemon that reads scene brightness from the ISP (`/proc/jz/isp/isp-m0`) and switches day and night through the `/sbin/daynight` script, which moves the IR-cut filter and switches the IR LEDs. Separate thresholds for each direction stop it flip-flopping at dusk."
+starts = "`/etc/init.d/S10daynightd`."
+upstream = ["daynightd"]
+
+# --- rings (Thingino 2 only: the whole lane has versions = ["thingino2"]) ---
+[[nodes]]
+id = "main"
+lane = "ring"
+kind = "video"
+title = "main"
+sub = "H.264 / H.265"
+about = "Encoded full-resolution video ({camera.resolution}) from the main channel."
+file = "/dev/shm/rss_ring_main"
+
+[[nodes]]
+id = "sub"
+lane = "ring"
+kind = "video"
+title = "sub"
+sub = "small video"
+about = "Encoded low-resolution video for previews and low-bandwidth clients."
+file = "/dev/shm/rss_ring_sub"
+
+[[nodes]]
+id = "jpeg0"
+lane = "ring"
+kind = "video"
+title = "jpeg0"
+sub = "snapshots"
+about = "JPEG snapshots from the main channel."
+file = "/dev/shm/rss_ring_jpeg0"
+
+[[nodes]]
+id = "jpeg1"
+lane = "ring"
+kind = "video"
+title = "jpeg1"
+sub = "small snapshots"
+about = "Small JPEG snapshots, for thumbnails and low-bandwidth previews."
+file = "/dev/shm/rss_ring_jpeg1"
+
+[[nodes]]
+id = "ivs"
+lane = "ring"
+kind = "detect"
+title = "ivs"
+sub = "motion results"
+about = "Not pictures: the motion grid from the SoC's IVS block, which `rvd` reads and passes on to `rmd`."
+starts = "Produced by `rvd` when motion detection is in use."
+upstream = ["raptor"]
+note = ""
+
+[nodes.variant.wyze-cam-v4]
+about = "Not pictures: the motion grid from the SoC's IVS block (and NNA detections when enabled), which `rvd` reads and passes on to `rmd`."
+
+[[nodes]]
+id = "audio"
+lane = "ring"
+kind = "audio"
+title = "audio"
+sub = "mic, encoded"
+about = "Encoded microphone audio from `rad`."
+file = "/dev/shm/rss_ring_audio"
+
+[[nodes]]
+id = "speaker"
+lane = "ring"
+kind = "audio"
+title = "speaker"
+sub = "to the speaker"
+about = "Audio going the other way. Clients (the RTSP backchannel, WebRTC, the `rac` tool) write here and `rad` plays it."
+file = "/dev/shm/rss_ring_speaker"
+
+[[nodes]]
+id = "osd"
+lane = "ring"
+kind = "control"
+title = "osd"
+sub = "text bitmaps"
+about = "A double buffer of BGRA bitmaps that `rod` draws and `rvd` reads. Two buffers means `rvd` never reads a half-drawn image."
+starts = "Created by `rod` when it starts."
+file = "/dev/shm/rss_osd_*"
+note = ""
+
+# --- consumers ---
+[[nodes]]
+id = "rsd"
+lane = "cons"
+versions = ["thingino2"]
+title = "rsd"
+sub = "RTSP server"
+about = "The RTSP server, built on the compy library. It reads the main or sub ring plus audio and sends them as RTP over RTSP with Digest login. It can also take audio back from a client into the speaker ring."
+starts = "`S31raptor`, `[rtsp]` enabled by default."
+upstream = ["raptor", "compy"]
+
+[[nodes]]
+id = "rhd"
+lane = "cons"
+versions = ["thingino2"]
+title = "rhd"
+sub = "HTTP snap/MJPEG"
+about = "A small HTTP server for `/snap` (JPEG), `/mjpeg` and `/audio`, read straight from the rings."
+starts = "`S31raptor`, `[http]` enabled by default."
+upstream = ["raptor"]
+
+[[nodes]]
+id = "rmd"
+lane = "cons"
+versions = ["thingino2"]
+title = "rmd"
+sub = "motion events"
+about = "Turns IVS results into idle, active and cooldown states, filters by region and object type, and triggers `rmr` recording or GPIO outputs."
+starts = "`S31raptor`, only if `[motion]` is enabled (off by default). Thingino adds `S32raptor-motion` for its motion helper scripts."
+upstream = ["raptor"]
+
+[[nodes]]
+id = "rmr"
+lane = "cons"
+versions = ["thingino2"]
+title = "rmr"
+sub = "SD recording"
+about = "Records crash-safe fragmented MP4 files to the microSD card, and timelapses. Recordings can be signed so tampering is detectable."
+starts = "`S31raptor`, only if `[recording]` or `[timelapse]` is enabled (off by default)."
+upstream = ["raptor"]
+
+[[nodes]]
+id = "rwd"
+lane = "cons"
+versions = ["thingino2"]
+title = "rwd"
+sub = "WebRTC"
+about = "WebRTC live view for browsers and go2rtc, with under a second of delay and two-way audio (browser microphone to camera speaker)."
+starts = "`S31raptor`, if installed and `[webrtc]` is enabled."
+upstream = ["raptor"]
+
+[[nodes]]
+id = "onvif"
+lane = "cons"
+title = "onvif"
+sub = "ONVIF"
+about = "Lets NVRs and apps discover the camera and ask for its RTSP address and settings, using the ONVIF standard."
+starts = "Served through the web server; `S96onvif_discovery` answers discovery probes on the LAN."
+upstream = ["onvif"]
+
+[[nodes]]
+id = "webui"
+lane = "cons"
+title = "uhttpd"
+sub = "web UI"
+about = "OpenWrt's tiny web server, serving Thingino's web pages and CGI scripts: settings, live preview, firmware library. Settings changes go through `raptorctl` to the running daemons and into `/etc/raptor.conf`."
+starts = "`/etc/init.d/S60uhttpd`."
+upstream = ["uhttpd", "firmware"]
+
+[nodes.variant.thingino1]
+about = "OpenWrt's tiny web server, serving Thingino's web pages and CGI scripts: settings, live preview, firmware updates. Settings changes are saved to prudynt's config and applied by prudynt."
+
+# --- network ---
+[[nodes]]
+id = "wlan"
+lane = "net"
+title = "wlan0 · Wi-Fi to your LAN"
+sub = ""
+about = "The network interface the Wi-Fi driver creates on the {camera.wifi_short}. Everything the camera sends leaves through here."
+starts = "`S36wireless` and `S38wpa_supplicant` join the network; `S40network` gets an address by DHCP."
+upstream = []
+
+# --- system services ---
+[[nodes]]
+id = "mdnsd"
+lane = "svc"
+title = "mdnsd"
+sub = "mDNS · S50"
+about = "Announces the camera on the LAN (multicast DNS) so other devices can find it by name without a DNS server."
+starts = "`/etc/init.d/S50mdnsd`."
+upstream = ["mdnsd"]
+
+[[nodes]]
+id = "wpa"
+lane = "svc"
+title = "wpa_supplicant"
+sub = "Wi-Fi login · S38"
+about = "Joins your Wi-Fi network with the saved password and keeps the link up."
+starts = "`/etc/init.d/S38wpa_supplicant`."
+upstream = ["hostap"]
+
+[[nodes]]
+id = "dropbear"
+lane = "svc"
+standalone = true
+title = "dropbear"
+sub = "SSH · S50"
+about = "The SSH server, for logging in to the camera's shell."
+starts = "`/etc/init.d/S50dropbear`."
+upstream = ["dropbear"]
+
+[[nodes]]
+id = "ntpd"
+lane = "svc"
+standalone = true
+title = "ntpd"
+sub = "time · S49"
+about = "BusyBox ntpd sets the clock from the internet. These cameras have no real-time clock, and OSD timestamps and recordings need the right time."
+starts = "`/etc/init.d/S49ntpd`."
+upstream = ["busybox"]
+
+[[nodes]]
+id = "crond"
+lane = "svc"
+standalone = true
+title = "crond"
+sub = "timers · S50"
+about = "Runs scheduled jobs, for example periodic checks and snapshots."
+starts = "`/etc/init.d/S50crond`."
+upstream = ["busybox"]
+
+[[nodes]]
+id = "syslogd"
+lane = "svc"
+standalone = true
+title = "syslogd"
+sub = "logs · S01"
+about = "Collects every program's log messages. Read them on the camera with `logread`."
+starts = "`/etc/init.d/S01syslogd`."
+upstream = ["busybox"]
+
+# --- destinations ---
+[[nodes]]
+id = "browser"
+lane = "out"
+title = "Web browser"
+sub = "settings · preview"
+about = "The camera's web UI, plus snapshots, MJPEG and WebRTC live view."
+starts = "Not part of the camera."
+
+[[nodes]]
+id = "sd"
+lane = "out"
+needs = ["sd"]
+versions = ["thingino2"]
+title = "microSD card"
+sub = "MP4 recordings"
+about = "Where `rmr` writes recordings. U-Boot also reads recovery images (`autoupdate-full.bin`) from it."
+starts = "Not part of the camera's software."
+
+[[nodes]]
+id = "nvr"
+lane = "out"
+title = "NVR / recorder"
+sub = "Frigate · Blue Iris · ONVIF"
+about = "Network video recorders pull the RTSP stream to record and analyse it. ONVIF lets them find the camera and its stream address on their own."
+starts = "Not part of the camera."
+
+[[nodes]]
+id = "player"
+lane = "out"
+title = "Media player"
+sub = "VLC · ffplay · go2rtc"
+about = "Any RTSP client can play the stream directly, or a restreamer like go2rtc can share it onward."
+starts = "Not part of the camera."
+
+# ---------------------------------------------------------------------------
+# Edges: [from, to, kind, label] plus an optional 5th item:
+#   "up" / "down"   which way the curve bends between two boxes in the same lane
+#   { arc = "up", versions = [...], cameras = [...], needs = [...] }   options table
+# A line is hidden automatically when either of its boxes is hidden.
+# kind: video | audio | control | detect | mixed  (mixed always shows)
+# (The [connections] header matters: without it TOML would attach the list to the last node.)
+# ---------------------------------------------------------------------------
+[connections]
+edges = [
+  ["sensor",   "isp",       "video",   "raw frames over MIPI"],
+  ["soc",      "isp",       "video",   "ISP hardware block"],
+  ["soc",      "enc",       "video",   "encoder blocks"],
+  ["soc",      "nna",       "detect",  "NNA block"],
+  ["mic",      "audiok",    "audio",   "PCM samples"],
+  ["wifichip", "wifidrv",   "mixed",   "radio"],
+  ["gpio",     "ircut",     "control", "move filter, switch LEDs"],
+  ["isp",      "libimp",    "video",   "processed frames"],
+  ["enc",      "libimp",    "video",   "encoded stream"],
+  ["nna",      "libimp",    "detect",  "detections"],
+  ["audiok",   "libimp",    "audio",   "PCM"],
+  # Thingino 2: raptor
+  ["libimp",   "hal",       "mixed",   "vendor API calls"],
+  ["hal",      "rvd",       "video",   "frames, ISP control"],
+  ["hal",      "rad",       "audio",   "PCM in and out"],
+  ["raptorctl","rvd",       "control", "control socket"],
+  ["ric",      "rvd",       "control", "reads brightness, sets night mode", "up"],
+  ["ric",      "gpio",      "control", "IR-cut + LEDs"],
+  ["rvd",      "main",      "video",   "encoded video"],
+  ["rvd",      "sub",       "video",   "encoded video"],
+  ["rvd",      "jpeg0",     "video",   "JPEG"],
+  ["rvd",      "jpeg1",     "video",   "JPEG"],
+  ["rvd",      "ivs",       "detect",  "motion grid"],
+  ["rad",      "audio",     "audio",   "encoded audio"],
+  ["speaker",  "rad",       "audio",   "played on the speaker"],
+  ["rod",      "osd",       "control", "text bitmaps"],
+  ["osd",      "rvd",       "control", "blended into video"],
+  ["main",     "rsd",       "video",   "video"],
+  ["sub",      "rsd",       "video",   "video"],
+  ["audio",    "rsd",       "audio",   "audio"],
+  ["jpeg0",    "rhd",       "video",   "snapshots"],
+  ["audio",    "rhd",       "audio",   "audio"],
+  ["ivs",      "rmd",       "detect",  "motion results"],
+  ["rmd",      "rmr",       "detect",  "start recording", "down"],
+  ["main",     "rmr",       "video",   "video"],
+  ["audio",    "rmr",       "audio",   "audio"],
+  ["main",     "rwd",       "video",   "video"],
+  ["audio",    "rwd",       "audio",   "audio"],
+  ["rwd",      "speaker",   "audio",   "browser mic to speaker"],
+  ["webui",    "raptorctl", "control", "settings changes"],
+  ["onvif",    "rsd",       "control", "hands out the RTSP address", "down"],
+  ["rsd",      "nvr",       "video",   "RTSP"],
+  ["rsd",      "player",    "video",   "RTSP"],
+  ["rhd",      "browser",   "video",   "snapshots, MJPEG"],
+  ["rwd",      "browser",   "video",   "WebRTC"],
+  ["rmr",      "sd",        "video",   "MP4 files"],
+  # Thingino 1: prudynt
+  ["libimp",   "prudynt",   "mixed",   "frames, audio, ISP control"],
+  ["isp",      "daynightd", "control", "brightness from /proc/jz/isp"],
+  ["daynightd","gpio",      "control", "IR-cut + LEDs (daynight script)"],
+  ["prudynt",  "nvr",       "video",   "RTSP"],
+  ["prudynt",  "player",    "video",   "RTSP"],
+  ["prudynt",  "browser",   "video",   "live preview"],
+  ["webui",    "prudynt",   "control", "settings changes"],
+  ["onvif",    "prudynt",   "control", "hands out the RTSP address"],
+  # both
+  ["webui",    "browser",   "control", "web pages"],
+  ["onvif",    "nvr",       "control", "ONVIF"],
+  ["wpa",      "wlan",      "control", "joins Wi-Fi"],
+  ["mdnsd",    "wlan",      "control", "announces the camera", "up"],
+]
+
+# ---------------------------------------------------------------------------
+# "A frame's journey" (numbered, in order)
+# ---------------------------------------------------------------------------
+[[journey]]
+title = "Light hits the sensor."
+text = "The {camera.sensor} reads out a raw grid of brightness values ({camera.resolution}), 20 to 30 times a second, and sends it over the MIPI link into the SoC."
+
+[[journey]]
+title = "The ISP makes it a picture."
+text = "The ISP hardware block, driven by `{camera.isp_module}`, adds colour, sets exposure and white balance, removes noise and flips the image. `ric` watches its brightness readings to decide day or night."
+
+[journey.variant.thingino1]
+text = "The ISP hardware block, driven by `{camera.isp_module}`, adds colour, sets exposure and white balance, removes noise and flips the image. `daynightd` watches its brightness readings to decide day or night."
+
+[[journey]]
+title = "The picture is split into channels."
+text = "A full-resolution *main* channel and a small *sub* channel. `rod`'s timestamp is burned in here by the hardware OSD."
+
+[journey.variant.thingino1]
+text = "A full-resolution *main* channel and a small *sub* channel. prudynt's timestamp is burned in here by the hardware OSD."
+
+[[journey]]
+title = "The hardware encoder compresses it."
+text = "The {camera.encoder} encoder makes each frame tens to hundreds of times smaller. A JPEG encoder makes snapshots, and the IVS block computes a motion grid."
+
+[[journey]]
+versions = ["thingino2"]
+title = "`rvd` publishes it."
+text = "Through raptor-hal and libimp, `rvd` collects each encoded frame and writes it into a ring in `/dev/shm`. `rad` does the same for audio."
+
+[[journey]]
+versions = ["thingino2"]
+title = "Consumers read the same frame."
+text = "`rsd` wraps it in RTP for RTSP, `rwd` sends it over WebRTC, `rmr` writes MP4. None of them encode anything; they all read the same bytes."
+
+[[journey]]
+versions = ["thingino1"]
+title = "prudynt collects it."
+text = "prudynt pulls each encoded frame (and the audio) from libimp into its own memory. Nothing else on the camera sees the frames."
+
+[[journey]]
+versions = ["thingino1"]
+title = "prudynt serves it."
+text = "prudynt's own RTSP server sends the frame to every connected client, and the web UI preview gets a copy. It all happens inside one process."
+
+[[journey]]
+title = "Out over Wi-Fi."
+text = "Packets leave through `wlan0` on the {camera.wifi_short}. An NVR or player pulls RTSP; a browser gets WebRTC or MJPEG."
+
+[journey.variant.thingino1]
+text = "Packets leave through `wlan0` on the {camera.wifi_short}. An NVR or player pulls RTSP from prudynt."
+
+# ---------------------------------------------------------------------------
+# "How it boots" (numbered, in order). `when` is the small grey tag.
+# ---------------------------------------------------------------------------
+[[boot]]
+title = "U-Boot"
+when = "bootloader"
+text = "Reads its environment from the {camera.flash}, loads the kernel and starts it. It also flashes `autoupdate-full.bin` from a microSD card for recovery."
+
+[[boot]]
+title = "Linux kernel"
+when = "Linux {camera.kernel}"
+text = "Mounts the read-only root filesystem with a writable overlay on top, then starts BusyBox `init`."
+
+[[boot]]
+title = "Init scripts, in number order"
+when = "/etc/init.d/S??*"
+text = "Each `S` script runs in turn. The number sets the order; which scripts exist depends on the build."
+
+[[boot]]
+title = "Basics"
+when = "S01–S07"
+text = "syslog, entropy, timezone, hostname, GPIO defaults, IR-cut start position."
+
+[[boot]]
+versions = ["thingino1"]
+title = "Day/night"
+when = "S10daynightd"
+text = "`daynightd` starts watching scene brightness."
+
+[[boot]]
+title = "Drivers"
+when = "S11modules"
+text = "Loads the ISP and sensor (`{camera.isp_module}`), encoder, audio and Wi-Fi ({camera.wifi_driver}) kernel modules."
+
+[boot.variant.wyze-cam-v4]
+text = "Loads the ISP and sensor (`{camera.isp_module}`), encoder, audio and Wi-Fi ({camera.wifi_driver}) kernel modules, plus `soc-nna` when detection is used."
+
+[[boot]]
+versions = ["thingino2"]
+title = "Raptor"
+when = "S31raptor"
+text = "Starts `rvd` first and waits up to 5 s for `/dev/shm/rss_ring_main`. Then `rad`, `rod`, `rsd`, `rhd`, `ric`, and any optional daemon whose section is enabled in `raptor.conf` (`rmr`, `rmd`, `rwd`, `rsp`, `rsr`)."
+
+[[boot]]
+versions = ["thingino2"]
+title = "Raptor helpers"
+when = "S32–S33"
+text = "`S32raptor-motion` and `S33raptor-privacy`."
+
+[[boot]]
+versions = ["thingino1"]
+title = "Prudynt"
+when = "S31prudynt"
+text = "Starts prudynt, after moving any old-style config into `/etc/prudynt.user.json`. From here on, one process handles video, audio, OSD, motion and RTSP."
+
+[[boot]]
+title = "Settings restore + network"
+when = "S36–S40"
+text = "`S37cfg-autorestore` restores your backed-up config on the first boot after a flash. `S36wireless`, `S38wpa_supplicant` and `S40network` join Wi-Fi and get an address."
+
+[[boot]]
+title = "Services"
+when = "S49–S60"
+text = "`ntpd` sets the clock, then `dropbear` (SSH), `crond`, `mdnsd`, and `uhttpd` for the web UI."
+
+[[boot]]
+title = "Late extras"
+when = "S96–S99"
+text = "`S96onvif_discovery` and other optional services, then `S99led` to show the camera is ready."
+
+[boot.variant.thingino1]
+text = "`S96onvif_discovery`, the recording helpers, and `S99led` to show the camera is ready."
+
+# ---------------------------------------------------------------------------
+# Repos: the upstream table, and the ids that boxes use in `upstream = [...]`.
+#   package = thingino-firmware package name; `build.py --pins` reads its pinned
+#             commit from each version's `ref` (stored in pins.json)
+#   pin     = text shown when there is no package (or before --pins has run)
+#   table   = false keeps a repo out of the table (boxes can still link to it)
+#   versions / cameras / needs work here too
+# ---------------------------------------------------------------------------
+[[repos]]
+id = "firmware"
+piece = "Firmware build"
+name = "themactep/thingino-firmware"
+url = "https://github.com/themactep/thingino-firmware"
+pin = "{version.branch}"
+what = "Buildroot tree, init scripts, web UI pages, camera configs"
+
+[[repos]]
+id = "uboot"
+piece = "Bootloader"
+name = "gtxaspec/u-boot"
+url = "https://github.com/gtxaspec/u-boot"
+pin = "per SoC"
+what = "U-Boot for Ingenic SoCs"
+
+[[repos]]
+id = "kernel"
+piece = "Kernel"
+name = "gtxaspec/thingino-linux"
+url = "https://github.com/gtxaspec/thingino-linux"
+pin = "{camera.kernel}"
+what = "Patched Ingenic Linux kernels"
+
+[[repos]]
+id = "ingenic-sdk"
+piece = "Hardware drivers"
+name = "thingino/ingenic-sdk"
+url = "https://github.com/thingino/ingenic-sdk"
+package = "ingenic-sdk"
+what = "ISP, sensor, encoder, audio kernel modules"
+
+[[repos]]
+id = "ingenic-lib"
+piece = "libimp"
+name = "gtxaspec/ingenic-lib"
+url = "https://github.com/gtxaspec/ingenic-lib"
+package = "ingenic-lib"
+what = "Ingenic's closed IMP libraries, per SoC and version"
+
+[[repos]]
+id = "raptor"
+versions = ["thingino2"]
+piece = "raptor (all r* daemons)"
+name = "gtxaspec/raptor"
+url = "https://github.com/gtxaspec/raptor"
+package = "thingino-raptor"
+what = "rvd, rad, rsd, rhd, ric, rod, rmd, rmr, rwd, raptorctl and the rest"
+
+[[repos]]
+id = "raptor-hal"
+versions = ["thingino2"]
+piece = "raptor-hal"
+name = "gtxaspec/raptor-hal"
+url = "https://github.com/gtxaspec/raptor-hal"
+package = "thingino-raptor-hal"
+what = "One API over every libimp generation"
+
+[[repos]]
+id = "raptor-ipc"
+versions = ["thingino2"]
+piece = "raptor-ipc"
+name = "gtxaspec/raptor-ipc"
+url = "https://github.com/gtxaspec/raptor-ipc"
+package = "thingino-raptor-ipc"
+what = "Shared-memory rings, OSD buffers, control socket protocol"
+
+[[repos]]
+id = "raptor-common"
+versions = ["thingino2"]
+piece = "raptor-common"
+name = "gtxaspec/raptor-common"
+url = "https://github.com/gtxaspec/raptor-common"
+package = "thingino-raptor-common"
+what = "Config parser, logging, daemon helpers"
+
+[[repos]]
+id = "compy"
+versions = ["thingino2"]
+piece = "compy"
+name = "gtxaspec/compy"
+url = "https://github.com/gtxaspec/compy"
+pin = "via raptor"
+what = "RTSP/RTP library used by rsd"
+
+[[repos]]
+id = "prudynt"
+versions = ["thingino1"]
+piece = "prudynt"
+name = "themactep/prudynt-t"
+url = "https://github.com/themactep/prudynt-t"
+package = "prudynt-t"
+what = "The Thingino 1 streamer: video, audio, OSD, motion and RTSP in one program"
+
+[[repos]]
+id = "daynightd"
+versions = ["thingino1"]
+piece = "daynightd"
+name = "thingino-firmware package/thingino-daynightd"
+url = "https://github.com/themactep/thingino-firmware/tree/master/package/thingino-daynightd"
+package = "thingino-daynightd"
+what = "Day/night switching from ISP brightness (lives inside the firmware repo)"
+
+[[repos]]
+id = "uhttpd"
+piece = "Web server"
+name = "OpenWrt uhttpd"
+url = "https://git.openwrt.org/project/uhttpd.git"
+package = "thingino-uhttpd"
+what = "Serves the web UI and CGI scripts"
+
+[[repos]]
+id = "onvif"
+piece = "ONVIF"
+name = "themactep/thingino-onvif"
+url = "https://github.com/themactep/thingino-onvif"
+package = "thingino-onvif"
+what = "ONVIF server and discovery for NVRs"
+
+[[repos]]
+id = "mdnsd"
+piece = "mDNS"
+name = "troglobit/mdnsd"
+url = "https://github.com/troglobit/mdnsd"
+pin = "buildroot"
+what = "Announces the camera on the LAN"
+
+[[repos]]
+id = "hostap"
+piece = "wpa_supplicant"
+name = "hostap (wpa_supplicant)"
+url = "https://w1.fi/wpa_supplicant/"
+pin = "buildroot"
+what = "Wi-Fi client"
+table = false
+
+[[repos]]
+id = "dropbear"
+piece = "SSH"
+name = "mkj/dropbear"
+url = "https://github.com/mkj/dropbear"
+pin = "buildroot"
+what = "SSH server"
+table = false
+
+[[repos]]
+id = "busybox"
+piece = "BusyBox"
+name = "BusyBox"
+url = "https://busybox.net/"
+pin = "buildroot"
+what = "init, shell, ntpd, crond, syslogd and most command-line tools"
+table = false

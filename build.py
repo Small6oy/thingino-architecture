@@ -1,0 +1,464 @@
+#!/usr/bin/env python3
+"""Build the Thingino architecture page from architecture.toml.
+
+    python3 build.py              check the data and write architecture.html
+    python3 build.py --pins       also re-read upstream commit pins for every firmware version
+    python3 build.py --pins DIR   same, from another thingino-firmware checkout
+    python3 build.py --fetch      with --pins: `git fetch --all` in the checkout first
+    python3 build.py --check      check only, write nothing
+    python3 build.py --watch      rebuild whenever the data, core.js or a template changes
+    python3 build.py --open       open the first layout in the browser after building
+
+Every layout in LAYOUTS (below) is built from the same data.
+
+The page lets the reader pick a camera and a firmware version. The data marks what
+belongs to which (versions / cameras / needs), fills {camera.x} / {version.x}
+placeholders, and applies [<item>.variant.<id>] overrides. This script checks every
+camera x version combination, so a new camera or version can't silently break the diagram.
+
+Standard library only (Python 3.11+ for tomllib).
+"""
+from __future__ import annotations
+
+import argparse
+
+import datetime as dt
+import json
+import re
+import subprocess
+import sys
+import time
+import tomllib
+import webbrowser
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+DATA = HERE / "architecture.toml"
+PINS = HERE / "pins.json"
+CORE = HERE / "core.js"          # shared data logic, added to every template at /*__CORE__*/
+# Layouts: template -> page. Each reads the same data; add a line to add a layout.
+LAYOUTS = [
+    ("template.html",          "architecture.html"),           # stacked lanes on a canvas (the original)
+    ("template-signal.html",   "architecture-signal.html"),    # left-to-right signal path, side drawer
+    ("template-explorer.html", "architecture-explorer.html"),  # three-pane explorer, focus graph
+]
+OUT = HERE / LAYOUTS[0][1]
+# research/thingino/architecture -> workspace/projects/thingino-firmware
+DEFAULT_FIRMWARE = HERE.parents[2] / "projects" / "thingino-firmware"
+
+EDGE_KINDS = {"video", "audio", "control", "detect", "mixed"}
+COLOURS = {"video", "audio", "control", "detect", "accent"}
+SHAPES = {"box", "pill", "band"}
+PLACEHOLDER = re.compile(r"\{(camera|version)\.([A-Za-z0-9_-]+)\}")
+CONDITION_KEYS = ("versions", "cameras", "needs")
+
+
+class Problems:
+    def __init__(self):
+        self.errors: list[str] = []
+        self.warns: list[str] = []
+
+    def error(self, msg): self.errors.append(msg)
+    def warn(self, msg): self.warns.append(msg)
+
+
+# ======================================================================= pins
+def git(firmware: Path, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", "-C", str(firmware), *args], capture_output=True, text=True)
+
+
+def read_pins(firmware: Path, versions: list[dict], packages: list[str], fetch: bool) -> dict:
+    """For each version, read <PKG>_VERSION / _SITE from package/<pkg>/<pkg>.mk at the version's git ref."""
+    if not (firmware / "package").is_dir():
+        sys.exit(f"--pins: {firmware} is not a thingino-firmware checkout (no package/ folder)")
+    if fetch:
+        print(f"fetching in {firmware} ...")
+        r = git(firmware, "fetch", "--all", "--quiet")
+        if r.returncode:
+            print(f"  warning: git fetch failed: {r.stderr.strip()}")
+    out = {}
+    for v in versions:
+        ref = v.get("ref")
+        if ref:
+            sha = git(firmware, "rev-parse", "--short", ref)
+            if sha.returncode:
+                print(f"  warning: version '{v['id']}': ref '{ref}' not found in {firmware}; skipped")
+                continue
+            commit = sha.stdout.strip()
+            date = git(firmware, "log", "-1", "--format=%cs", ref).stdout.strip()
+            label = ref
+        else:  # working tree
+            commit = git(firmware, "rev-parse", "--short", "HEAD").stdout.strip()
+            date = git(firmware, "log", "-1", "--format=%cs").stdout.strip()
+            label = git(firmware, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip() + " (working tree)"
+        pins = {}
+        for pkg in packages:
+            path = f"package/{pkg}/{pkg}.mk"
+            if ref:
+                r = git(firmware, "show", f"{ref}:{path}")
+                text = r.stdout if r.returncode == 0 else None
+            else:
+                f = firmware / path
+                text = f.read_text(errors="replace") if f.exists() else None
+            if text is None:
+                continue  # package not in this version: normal (e.g. raptor on an old line)
+            var = pkg.upper().replace("-", "_")
+            version = re.search(rf"^{var}_VERSION\s*=\s*(\S+)", text, re.M)
+            site = re.search(rf"^{var}_SITE\s*=\s*(\S+)", text, re.M)
+            if version:
+                pins[pkg] = {"version": version.group(1), "site": site.group(1) if site else None}
+        out[v["id"]] = {"_source": {"path": str(firmware), "ref": label, "commit": commit, "date": date,
+                                    "read": dt.datetime.now().isoformat(timespec="seconds")}, **pins}
+        print(f"pins: {v['id']:<12} {label} @ {commit} ({date}): {len(pins)} packages")
+    return {"versions": out}
+
+
+def short(v: str) -> str:
+    return v[:7] if re.fullmatch(r"[0-9a-f]{40}", v) else v
+
+
+# ======================================================================= model
+def normalise(d: dict, p: Problems) -> None:
+    """Pull edges out of [connections] and turn each into a dict."""
+    for n in d.get("nodes", []):
+        if "edges" in n:
+            p.error(f"node '{n.get('id')}' has an 'edges' key: put the edge list under a [connections] header")
+    raw = d.pop("connections", {}).get("edges", d.get("edges")) or []
+    edges = []
+    for i, e in enumerate(raw):
+        where = f"edge #{i + 1} {e[:2]}"
+        if not isinstance(e, list) or not (4 <= len(e) <= 5):
+            p.error(f"{where}: needs [from, to, kind, label] plus an optional 'up'/'down' or options table")
+            continue
+        edge = {"from": e[0], "to": e[1], "kind": e[2], "label": e[3]}
+        if len(e) == 5:
+            opt = e[4]
+            if isinstance(opt, str):
+                opt = {"arc": opt}
+            if not isinstance(opt, dict):
+                p.error(f"{where}: 5th item must be 'up', 'down' or a table")
+                opt = {}
+            unknown = set(opt) - {"arc", *CONDITION_KEYS}
+            if unknown:
+                p.error(f"{where}: unknown option(s) {sorted(unknown)}")
+            edge.update(opt)
+        edge["_where"] = where
+        edges.append(edge)
+    d["edges"] = edges
+
+
+def visible(item: dict, cam: dict, ver: dict) -> bool:
+    if "versions" in item and ver["id"] not in item["versions"]:
+        return False
+    if "cameras" in item and cam["id"] not in item["cameras"]:
+        return False
+    feats = set(cam.get("features", []))
+    return all(f in feats for f in item.get("needs", []))
+
+
+def resolve(item: dict, cam: dict, ver: dict) -> dict:
+    out = {k: v for k, v in item.items() if k != "variant"}
+    for key in (ver["id"], cam["id"]):
+        out.update(item.get("variant", {}).get(key, {}))
+    return out
+
+
+def fill(s: str, cam: dict, ver: dict) -> str:
+    return PLACEHOLDER.sub(lambda m: str((cam if m[1] == "camera" else ver).get(m[2], m[0])), s)
+
+
+def strings(obj, path=""):
+    """Yield (path, string) for every string inside obj."""
+    if isinstance(obj, str):
+        yield path, obj
+    elif isinstance(obj, dict):
+        for k, v in obj.items():
+            yield from strings(v, f"{path}.{k}" if path else k)
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj):
+            yield from strings(v, f"{path}[{i}]")
+
+
+def layout_lane(lane: dict, nodes: list[dict], combo: str, p: Problems) -> None:
+    """Same column rules as template.html: auto placement, `col`, `span`, cols = n | "auto"."""
+    nxt, cells, end = 0, {}, 0
+    for n in nodes:
+        col = n.get("col", nxt)
+        span = n.get("span", 1)
+        nxt = col + span
+        end = max(end, nxt)
+        for c in range(col, col + span):
+            if c in cells:
+                p.error(f"[{combo}] node '{n['id']}' overlaps '{cells[c]}' in lane '{lane['id']}' (column {c})")
+            cells[c] = n["id"]
+    cols = lane["cols"]
+    if cols != "auto" and end > cols:
+        p.error(f"[{combo}] lane '{lane['id']}' has {cols} columns but its boxes need {end}"
+                f" (raise cols, or set cols = \"auto\")")
+
+
+# ======================================================================= checks
+def validate(d: dict, pins: dict, p: Problems) -> list[tuple[str, int, int]]:
+    for key in ("page", "cameras", "versions", "lanes", "nodes", "edges", "repos"):
+        if not d.get(key):
+            p.error(f"missing or empty [{key}]")
+    if p.errors:
+        return []
+
+    def unique(items, what):
+        seen = {}
+        for it in items:
+            iid = it.get("id")
+            if not iid:
+                p.error(f"a {what} has no id: {it.get('name') or it.get('title') or it}")
+            elif iid in seen:
+                p.error(f"{what} '{iid}' defined twice")
+            seen[iid] = it
+        return seen
+
+    cams, vers = unique(d["cameras"], "camera"), unique(d["versions"], "version")
+    lanes, nodes = unique(d["lanes"], "lane"), unique(d["nodes"], "node")
+    repos = unique(d["repos"], "repo")
+    for clash in set(cams) & set(vers):
+        p.error(f"'{clash}' is both a camera id and a version id; variants need them to differ")
+    all_features = {f for c in d["cameras"] for f in c.get("features", [])}
+
+    # cameras / versions
+    for c in d["cameras"]:
+        for v in c.get("supports", []):
+            if v not in vers:
+                p.error(f"camera '{c['id']}': supports lists unknown version '{v}'")
+        if "supports" in c and not c["supports"]:
+            p.error(f"camera '{c['id']}': supports is empty, so it can never be shown")
+        if not isinstance(c.get("features", []), list):
+            p.error(f"camera '{c['id']}': features must be a list")
+
+    # placeholders: every camera / version must have every field that is used
+    used = {"camera": set(), "version": set()}
+    for section in ("page", "lanes", "nodes", "edges", "journey", "boot", "repos"):
+        for path, s in strings(d.get(section, []), section):
+            for m in PLACEHOLDER.finditer(s):
+                used[m[1]].add(m[2])
+    for field in sorted(used["camera"]):
+        missing = [c["id"] for c in d["cameras"] if field not in c]
+        if missing:
+            p.error(f"{{camera.{field}}} is used but missing from camera(s): {', '.join(missing)}")
+    for field in sorted(used["version"]):
+        missing = [v["id"] for v in d["versions"] if field not in v]
+        if missing:
+            p.error(f"{{version.{field}}} is used but missing from version(s): {', '.join(missing)}")
+
+    # conditions + variants on every item
+    def check_item(item, where):
+        for k in ("versions", "cameras"):
+            ref = vers if k == "versions" else cams
+            for x in item.get(k, []):
+                if x not in ref:
+                    p.error(f"{where}: {k} lists unknown id '{x}'")
+        for f in item.get("needs", []):
+            if f not in all_features:
+                p.warn(f"{where}: needs '{f}', which no camera has yet (it will never show)")
+        for key, over in item.get("variant", {}).items():
+            if key not in cams and key not in vers:
+                p.error(f"{where}: variant '{key}' is not a camera or version id")
+            if "id" in over or "lane" in over:
+                p.error(f"{where}: variant '{key}' can't change id or lane")
+
+    check_item(d["page"], "page")
+    for L in d["lanes"]:
+        check_item(L, f"lane '{L['id']}'")
+        if L.get("cols") != "auto" and (not isinstance(L.get("cols"), int) or L["cols"] < 1):
+            p.error(f"lane '{L['id']}': cols must be a whole number >= 1 or \"auto\"")
+        if L.get("shape", "box") not in SHAPES:
+            p.error(f"lane '{L['id']}': shape must be one of {sorted(SHAPES)}")
+    for r in d["repos"]:
+        check_item(r, f"repo '{r['id']}'")
+        for f in ("name", "url"):
+            if not r.get(f):
+                p.error(f"repo '{r['id']}': missing {f}")
+    for kind in ("journey", "boot"):
+        for i, s in enumerate(d.get(kind, [])):
+            check_item(s, f"{kind} step {i + 1}")
+    for n in d["nodes"]:
+        nid = n["id"]
+        check_item(n, f"node '{nid}'")
+        for f in ("lane", "title"):
+            if f not in n:
+                p.error(f"node '{nid}': missing {f}")
+        if n.get("lane") not in lanes:
+            p.error(f"node '{nid}': unknown lane '{n.get('lane')}'")
+        for c in ("kind", "color"):
+            if c in n and n[c] not in COLOURS:
+                p.error(f"node '{nid}': {c} '{n[c]}' must be one of {sorted(COLOURS)}")
+        if not n.get("about"):
+            p.warn(f"node '{nid}': no 'about' text")
+        for u in n.get("upstream", lanes.get(n.get("lane"), {}).get("default_upstream", [])):
+            if u not in repos:
+                p.error(f"node '{nid}': upstream '{u}' is not a repo id")
+    for L in d["lanes"]:
+        for u in L.get("default_upstream", []):
+            if u not in repos:
+                p.error(f"lane '{L['id']}': default_upstream '{u}' is not a repo id")
+    for e in d["edges"]:
+        check_item(e, e["_where"])
+        for end in (e["from"], e["to"]):
+            if end not in nodes:
+                p.error(f"{e['_where']}: unknown node '{end}'")
+        if e["kind"] not in EDGE_KINDS:
+            p.error(f"{e['_where']}: kind '{e['kind']}' must be one of {sorted(EDGE_KINDS)}")
+        if e.get("arc") not in (None, "up", "down"):
+            p.error(f"{e['_where']}: arc must be 'up' or 'down'")
+        if e["from"] == e["to"]:
+            p.error(f"{e['_where']}: connects a node to itself")
+    if p.errors:
+        return []
+
+    # every combination
+    summary = []
+    ever_node, ever_edge, linked = set(), set(), set()
+    for cam in d["cameras"]:
+        for ver in d["versions"]:
+            if "supports" in cam and ver["id"] not in cam["supports"]:
+                continue
+            combo = f"{cam['id']} + {ver['id']}"
+            vis_lanes = [L for L in d["lanes"] if visible(L, cam, ver)]
+            vis_lane_ids = {L["id"] for L in vis_lanes}
+            vis_nodes = [resolve(n, cam, ver) for n in d["nodes"] if n["lane"] in vis_lane_ids and visible(n, cam, ver)]
+            ids = {n["id"] for n in vis_nodes}
+            for L in vis_lanes:
+                layout_lane(L, [n for n in vis_nodes if n["lane"] == L["id"]], combo, p)
+            vis_edges = [e for e in d["edges"] if visible(e, cam, ver) and e["from"] in ids and e["to"] in ids]
+            for e in vis_edges:
+                ever_edge.add(e["_where"])
+                linked.update((e["from"], e["to"]))
+            ever_node |= ids
+            page = resolve(d["page"], cam, ver)
+            sel = page.get("default_selection")
+            if sel and sel not in ids:
+                p.warn(f"[{combo}] default_selection '{sel}' isn't shown; the page opens with nothing selected")
+            for n in vis_nodes:
+                if len(fill(n["title"], cam, ver)) > 30 and lanes[n["lane"]].get("shape") != "band":
+                    p.warn(f"[{combo}] node '{n['id']}': title is long and may be cut off")
+            summary.append((combo, len(ids), len(vis_edges)))
+    for n in d["nodes"]:
+        if n["id"] not in ever_node:
+            p.warn(f"node '{n['id']}' is hidden in every camera/version combination")
+        elif n["id"] not in linked and not n.get("standalone"):
+            p.warn(f"node '{n['id']}' has no connections (add standalone = true if that's intended)")
+    for e in d["edges"]:
+        if e["_where"] not in ever_edge:
+            p.warn(f"{e['_where']} never shows: its two boxes are never visible together")
+    for v in d["versions"]:
+        if v["id"] not in pins:
+            p.warn(f"version '{v['id']}' has no pins yet (run with --pins)")
+    return summary
+
+
+# ======================================================================= build
+def load_pins() -> dict:
+    if not PINS.exists():
+        return {}
+    data = json.loads(PINS.read_text())
+    return data.get("versions", {})  # older single-version files have no "versions" key: ignored
+
+
+def build(args) -> bool:
+    try:
+        d = tomllib.loads(DATA.read_text())
+    except tomllib.TOMLDecodeError as ex:
+        print(f"architecture.toml: {ex}")
+        return False
+    p = Problems()
+    normalise(d, p)
+
+    pins = load_pins()
+    if args.pins is not None:
+        firmware = Path(args.pins).expanduser() if args.pins else DEFAULT_FIRMWARE
+        packages = [r["package"] for r in d.get("repos", []) if r.get("package")]
+        fresh = read_pins(firmware, d.get("versions", []), packages, args.fetch)
+        PINS.write_text(json.dumps(fresh, indent=2) + "\n")
+        pins = fresh["versions"]
+
+    summary = validate(d, pins, p) if not p.errors else []
+    for w in p.warns:
+        print(f"  warning: {w}")
+    for e in p.errors:
+        print(f"  ERROR: {e}")
+    if p.errors:
+        print(f"{len(p.errors)} error(s); nothing written.")
+        return False
+
+    print("  views:  " + "  |  ".join(f"{c}: {n} boxes, {e} lines" for c, n, e in summary))
+
+    # attach pins per version
+    for r in d["repos"]:
+        r["pins"] = {vid: short(vp[r["package"]]["version"]) for vid, vp in pins.items()
+                     if r.get("package") and r["package"] in vp}
+    for v in d["versions"]:
+        src = pins.get(v["id"], {}).get("_source")
+        v["pins_source"] = f"`{src['ref']}` at `{src['commit']}` ({src['date']})" if src else ""
+    for e in d["edges"]:
+        e.pop("_where", None)
+    d["meta"] = {"built": dt.datetime.now().strftime("%Y-%m-%d %H:%M")}
+
+    if args.check:
+        print(f"OK: {len(d['cameras'])} cameras x {len(d['versions'])} versions. (--check: nothing written)")
+        return True
+
+    payload = json.dumps(d, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+    core = CORE.read_text().replace("</", "<\\/")
+    title = d["page"]["title"].replace("&", "&amp;").replace("<", "&lt;")
+    ok = True
+    for tpl_name, out_name in LAYOUTS:
+        tpl_path = HERE / tpl_name
+        if not tpl_path.exists():
+            print(f"  warning: {tpl_name} not found; {out_name} not built")
+            continue
+        tpl = tpl_path.read_text()
+        if "/*__DATA__*/null" not in tpl:
+            print(f"  ERROR: {tpl_name}: placeholder /*__DATA__*/null is missing")
+            ok = False
+            continue
+        if "/*__CORE__*/" in tpl:
+            tpl = tpl.replace("/*__CORE__*/", core)
+        html = tpl.replace("/*__DATA__*/null", payload).replace("__TITLE__", title)
+        (HERE / out_name).write_text(html)
+        print(f"wrote {out_name} ({len(html) // 1024} KB)")
+    print(f"  {len(d['cameras'])} cameras x {len(d['versions'])} versions, {len(d['nodes'])} boxes, {len(d['edges'])} lines")
+    return ok
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--pins", nargs="?", const="", default=None, metavar="DIR",
+                    help=f"re-read commit pins for every version (default checkout: {DEFAULT_FIRMWARE})")
+    ap.add_argument("--fetch", action="store_true", help="with --pins: git fetch --all first")
+    ap.add_argument("--check", action="store_true", help="validate only")
+    ap.add_argument("--watch", action="store_true", help="rebuild on every save")
+    ap.add_argument("--open", action="store_true", help="open the page after building")
+    args = ap.parse_args()
+
+    ok = build(args)
+    if ok and args.open and not args.check:
+        webbrowser.open(OUT.as_uri())
+    if args.watch:
+        args.pins, args.fetch = None, False  # only refresh pins once
+        watched = [DATA, CORE] + [HERE / t for t, _ in LAYOUTS]
+        stamp = lambda: tuple(f.stat().st_mtime if f.exists() else 0 for f in watched)
+        last = stamp()
+        print("watching the data, core.js and every template (Ctrl-C to stop)")
+        try:
+            while True:
+                time.sleep(0.7)
+                now = stamp()
+                if now != last:
+                    last = now
+                    print(time.strftime("%H:%M:%S"), end=" ")
+                    build(args)
+        except KeyboardInterrupt:
+            pass
+    sys.exit(0 if ok else 1)
+
+
+if __name__ == "__main__":
+    main()

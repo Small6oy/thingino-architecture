@@ -1,0 +1,102 @@
+{
+  "versions": {
+    "thingino2": {
+      "_source": {
+        "path": "thingino-firmware",
+        "ref": "upstream/master",
+        "commit": "4aa1be2d5",
+        "date": "2026-11-18",
+        "read": "2026-11-19T10:54:08"
+      },
+      "ingenic-sdk": {
+        "version": "d93ddb926b838a05a60240cf6276466ee78daea4",
+        "site": "https://github.com/thingino/ingenic-sdk"
+      },
+      "ingenic-lib": {
+        "version": "ea62f3da40cdca2bbf7bdb89b663f89952f850c0",
+        "site": "https://github.com/gtxaspec/ingenic-lib"
+      },
+      "thingino-raptor": {
+        "version": "101fb359f941d4f8724c74af8617477f00bd4520",
+        "site": "https://github.com/gtxaspec/raptor"
+      },
+      "thingino-raptor-hal": {
+        "version": "9f096647a17e45abb638d89dbd502022c782be0f",
+        "site": "https://github.com/gtxaspec/raptor-hal"
+      },
+      "thingino-raptor-ipc": {
+        "version": "00810bb7b91c3e21210b5a76d43748a23758f36a",
+        "site": "https://github.com/gtxaspec/raptor-ipc"
+      },
+      "thingino-raptor-common": {
+        "version": "ab1f9fd40dc917388449c201a0945c051587f4fb",
+        "site": "https://github.com/gtxaspec/raptor-common"
+      },
+      "prudynt-t": {
+        "version": "25ceebe87133887c3c61e94e3875551c47ac3137",
+        "site": "https://github.com/themactep/prudynt-t"
+      },
+      "thingino-daynightd": {
+        "version": "2.0.0",
+        "site": "$(THINGINO_DAYNIGHTD_PKGDIR)"
+      },
+      "thingino-uhttpd": {
+        "version": "93b05e0b65d91c23c5aa8fdde378df1f174ec71d",
+        "site": "https://git.openwrt.org/project/uhttpd.git"
+      },
+      "thingino-onvif": {
+        "version": "9f40ab3010f8039ba3b667f9a01af85a725bee0d",
+        "site": "https://github.com/themactep/thingino-onvif"
+      }
+    },
+    "thingino1": {
+      "_source": {
+        "path": "thingino-firmware",
+        "ref": "upstream/ciao",
+        "commit": "e822f9d2d",
+        "date": "2026-11-17",
+        "read": "2026-11-19T10:54:11"
+      },
+      "ingenic-sdk": {
+        "version": "9bb8ad519947deac4282f322da1beb14e17060c0",
+        "site": "https://github.com/themactep/ingenic-sdk"
+      },
+      "ingenic-lib": {
+        "version": "ea62f3da40cdca2bbf7bdb89b663f89952f850c0",
+        "site": "https://github.com/gtxaspec/ingenic-lib"
+      },
+      "thingino-raptor": {
+        "version": "101fb359f941d4f8724c74af8617477f00bd4520",
+        "site": "https://github.com/gtxaspec/raptor"
+      },
+      "thingino-raptor-hal": {
+        "version": "9f096647a17e45abb638d89dbd502022c782be0f",
+        "site": "https://github.com/gtxaspec/raptor-hal"
+      },
+      "thingino-raptor-ipc": {
+        "version": "00810bb7b91c3e21210b5a76d43748a23758f36a",
+        "site": "https://github.com/gtxaspec/raptor-ipc"
+      },
+      "thingino-raptor-common": {
+        "version": "ab1f9fd40dc917388449c201a0945c051587f4fb",
+        "site": "https://github.com/gtxaspec/raptor-common"
+      },
+      "prudynt-t": {
+        "version": "25ceebe87133887c3c61e94e3875551c47ac3137",
+        "site": "https://github.com/themactep/prudynt-t"
+      },
+      "thingino-daynightd": {
+        "version": "2.0.0",
+        "site": "$(THINGINO_DAYNIGHTD_PKGDIR)"
+      },
+      "thingino-uhttpd": {
+        "version": "93b05e0b65d91c23c5aa8fdde378df1f174ec71d",
+        "site": "https://git.openwrt.org/project/uhttpd.git"
+      },
+      "thingino-onvif": {
+        "version": "9f40ab3010f8039ba3b667f9a01af85a725bee0d",
+        "site": "https://github.com/themactep/thingino-onvif"
+      }
+    }
+  }
+}
