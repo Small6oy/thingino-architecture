@@ -238,7 +238,7 @@ const DATA = /*__DATA__*/null;
   }
   camSel.addEventListener('change', () => setView(camSel.value, ver.id, true));
   verSel.addEventListener('change', () => setView(cam.id, verSel.value, true));
-  window.addEventListener('hashchange', () => { const [c, v] = location.hash.slice(1).split('+'); if (c && (c !== cam.id || v !== ver.id)) setView(c, v, true); });
+  window.addEventListener('hashchange', () => { const [c, v] = TC.parseHash(); if (c && (c !== cam.id || v !== ver.id)) setView(c, v, true); });
 
   // ---------- model for the current view ----------
   let page, LANES, LI, nodes, byId, E, VH, repoById;
@@ -308,7 +308,7 @@ const DATA = /*__DATA__*/null;
     document.title = page.title;
     $('brand').textContent = page.title;
     $('eyebrow').textContent = page.eyebrow || '';
-    $('spec').innerHTML = (page.spec || []).map(([k, v]) => `<li><b>${esc(k)}</b>${esc(TC.plain(v))}</li>`).join('');
+    $('spec').innerHTML = TC.specRows(page).map(([k, v]) => `<li><b>${esc(k)}</b>${esc(TC.plain(v))}</li>`).join('');
     $('callout').innerHTML = md(page.callout || '');
     $('boot-foot').innerHTML = md(page.boot_foot || '');
     $('repos-intro').innerHTML = md(page.repos_intro || '') + (ver.pins_source ? ' Pins for ' + esc(ver.name) + ' come from ' + md(ver.pins_source) + '.' : '');
@@ -482,7 +482,7 @@ const DATA = /*__DATA__*/null;
   reduce.addEventListener('change', () => { startLoop(); redraw(); });
 
   readColors();
-  const [hc, hv] = location.hash.slice(1).split('+');
+  const [hc, hv] = TC.parseHash();
   setView(hc || cam.id, hv || ver.id, false);
   startLoop();
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { readColors(); redraw(); });

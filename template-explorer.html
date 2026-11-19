@@ -44,6 +44,7 @@ button, input { font: inherit; color: inherit; }
 .ctrl { display: flex; flex-wrap: wrap; gap: 12px 20px; }
 .ctl { display: grid; gap: 5px; }
 .ctl > span { font-family: var(--f-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.camsel { font: 600 13px var(--f-sans); color: var(--ink); background: var(--raise); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; max-width: min(420px, 80vw); }
 .segs { display: flex; flex-wrap: wrap; gap: 4px; padding: 3px; background: var(--raise); border: 1px solid var(--line); border-radius: 10px; }
 .segs button { border: 0; background: none; padding: 5px 10px; border-radius: 7px; cursor: pointer; font-weight: 600; font-size: 13px; display: grid; text-align: left; line-height: 1.25; }
 .segs button small { font-weight: 500; font-size: 11px; color: var(--muted); }
@@ -158,7 +159,7 @@ footer { font-family: var(--f-mono); font-size: 11px; color: var(--muted); paddi
     <div class="top-row">
       <div class="title"><b id="title"></b><span id="eyebrow"></span></div>
       <div class="ctrl">
-        <div class="ctl"><span id="cam-label">Camera</span><div class="segs" id="cams" role="group" aria-labelledby="cam-label"></div></div>
+        <div class="ctl"><span id="cam-label">Camera</span><select class="camsel" id="cams" aria-labelledby="cam-label"></select></div>
         <div class="ctl"><span id="ver-label">Firmware</span><div class="segs" id="vers" role="group" aria-labelledby="ver-label"></div></div>
       </div>
     </div>
@@ -223,14 +224,13 @@ const DATA = /*__DATA__*/null;
 
   // ---------- switches ----------
   function switches() {
-    $('cams').innerHTML = D.cameras.map(c => {
-      const g = c.group || c.name, v = c.name.startsWith(g) ? c.name.slice(g.length).trim().replace(/^\((.*)\)$/, '$1') : '';
-      return `<button type="button" data-cam="${esc(c.id)}" aria-pressed="${c.id === cam.id}">${esc(g)}${v ? `<small>${esc(v)}</small>` : ''}</button>`;
-    }).join('');
+    const groups = [...new Set(D.cameras.map(c => c.group || c.name))];
+    $('cams').innerHTML = groups.map(g => `<optgroup label="${esc(g)}">${D.cameras.filter(c => (c.group || c.name) === g).map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</optgroup>`).join('');
+    $('cams').value = cam.id;
     $('vers').innerHTML = D.versions.map(v => `<button type="button" data-ver="${esc(v.id)}" aria-pressed="${v.id === ver.id}"${TC.supports(cam, v) ? '' : ' disabled title="No config for this camera"'}>${esc(v.name)}<small>${esc(v.codename || '')} · ${esc(v.core || '')}</small></button>`).join('');
   }
   const go = (cid, vid) => { ({ cam, ver } = TC.pick(D, cid, vid)); TC.toHash(cam, ver); switches(); render(); };
-  $('cams').onclick = ev => { const b = ev.target.closest('[data-cam]'); if (b) go(b.dataset.cam, ver.id); };
+  $('cams').onchange = () => go($('cams').value, ver.id);
   $('vers').onclick = ev => { const b = ev.target.closest('[data-ver]'); if (b && !b.disabled) go(cam.id, b.dataset.ver); };
 
   // ---------- tabs ----------
@@ -248,7 +248,7 @@ const DATA = /*__DATA__*/null;
     document.title = P.title + ' · Explorer';
     $('title').textContent = P.title;
     $('eyebrow').textContent = P.eyebrow || '';
-    $('camcard').innerHTML = `<h5>This camera</h5><dl>${(P.spec || []).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(TC.plain(v))}</dd>`).join('')}</dl>`;
+    $('camcard').innerHTML = `<h5>This camera</h5><dl>${TC.specRows(P).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(TC.plain(v))}</dd>`).join('')}</dl>`;
     $('lede').innerHTML = md(P.lede);
     $('journey').innerHTML = V.journey.map(j => `<li><b>${md(j.title)}</b><p>${md(j.text)}</p></li>`).join('');
     $('callout').innerHTML = md(P.callout || '');

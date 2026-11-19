@@ -12,7 +12,7 @@
 # ---- Showing things only for some cameras / versions -------------------------------
 # Any lane, node, edge, journey step, boot step or repo can carry:
 #   versions = ["thingino2"]         shown only for these firmware versions
-#   cameras  = ["wyze-cam-v4"]       shown only for these cameras
+#   cameras  = ["wyze_cam3_t31x_gc2053_rtl8189ftv"]   shown only for these cameras (Thingino config names)
 #   needs    = ["nna"]               shown only if the camera has ALL these features
 # Nothing set = shown everywhere. A hidden lane hides its boxes; a hidden box hides its lines.
 #
@@ -20,7 +20,9 @@
 # Put a variant table right after the item:
 #   [nodes.variant.thingino1]        (or [journey.variant.<id>], [page.variant.<id>] ...)
 #   about = "text used when Thingino 1 is selected"
-# Version variants apply first, then camera variants.
+# The key is a version id, a camera feature (e.g. "nna") or a camera id.
+# They apply in that order: version, then features, then camera.
+# Optional placeholder: {camera.resolution?} becomes empty when a camera lacks the field.
 
 [page]
 title   = "Thingino Camera Anatomy"
@@ -31,14 +33,17 @@ boot_foot = "Raptor starts before the network on purpose: the rings fill straigh
 repos_intro = "Thingino is a Buildroot tree. It doesn't contain most of this code; each package file names an upstream repo and pins a commit. Pins differ between firmware versions."
 repos_foot = "Raptor splits the streamer into small daemons so that a crash in, say, WebRTC can't stop recording or RTSP. Only `rvd` and `rad` load the closed vendor library; nothing that faces the network shares memory with the hardware code."
 # The facts row under the camera picker: [label, text]
+# Rows whose text comes out empty (optional placeholders) are left out.
 spec = [
-  ["SoC",      "{camera.soc} · {camera.cpu}"],
-  ["Sensor",   "{camera.sensor} · {camera.resolution}"],
-  ["Memory",   "{camera.ram}"],
-  ["Flash",    "{camera.flash}"],
-  ["Wi-Fi",    "{camera.wifi}"],
-  ["Kernel",   "Linux {camera.kernel}"],
-  ["Image",    "{camera.image}"],
+  ["SoC",        "{camera.soc} · {camera.cpu}"],
+  ["Sensor",     "{camera.sensor}"],
+  ["Resolution", "{camera.resolution?}"],
+  ["Memory",     "{camera.ram}"],
+  ["Flash",      "{camera.flash}"],
+  ["Wi-Fi",      "{camera.wifi}"],
+  ["Kernel",     "Linux {camera.kernel}"],
+  ["Config",     "{camera.image} ({camera.tier})"],
+  ["Facts from", "{camera.source}"],
 ]
 
 [page.variant.thingino1]
@@ -47,54 +52,36 @@ boot_foot = "Everything video-related starts in one step, `S31prudynt`. If prudy
 repos_foot = "Thingino 1 uses one program, `prudynt`, for the whole streaming job. Thingino 2 replaced it with raptor, which splits the same work into small daemons so one crash can't take everything down."
 
 # ---------------------------------------------------------------------------
-# Cameras: one entry per Thingino camera config (board + sensor + Wi-Fi chip).
-#   group    = the model name; the picker groups configs under it
-#   supports = version ids that ship a config for this camera (others are greyed out)
-#   features = capabilities that `needs = [...]` checks (e.g. "nna", "ptz", "eth")
-#   Every camera must have every field that a {camera.x} placeholder uses.
-# Facts: Thingino board configs plus /proc on real hardware (2026-11-17).
-# Other configs of the same models exist upstream (v3: T31AL/ATBM6031, RT5370;
-# v4: GC4653 sensor) and can be added the same way.
+# Cameras come from cameras.json, which import_cameras.py generates from
+# Thingino's own camera configs (configs/cameras*, the SoC database in
+# soc/ingenic/ and kernels/ingenic.mk). Every config is one camera, with
+# fields: id (the config name), name, model, group (vendor), tier, image,
+# soc, soc_family, arch, cpu, sensor, ram, flash, wifi, wifi_short,
+# wifi_driver, kernel, isp_module, encoder, features, supports, source.
+#   features: audio, sd, ptz, eth, pwm, wifi, ircut, nna, multisensor
+#   supports: the version ids whose `ref` ships the config
+#
+# A [[cameras]] entry here overrides those fields for the camera with the
+# same id: use it for facts checked on real hardware (Thingino's configs
+# don't say sensor resolution or CPU clock). These come first in the picker,
+# and the first one is what the page opens on.
 # ---------------------------------------------------------------------------
 [[cameras]]
-id         = "wyze-cam-v4"
-name       = "Wyze Cam v4 (OS04D10)"
-group      = "Wyze Cam v4"
-image      = "wyze_cam4_t41nq_os04d10_atbm6062s"
-soc        = "Ingenic T41NQ"
+id         = "wyze_cam4_t41nq_os04d10_atbm6062s"
 cpu        = "XBurst2, 2 cores, 1104 MHz"
 sensor     = "OmniVision OS04D10"
 resolution = "4 MP, 2560×1440"
-ram        = "128 MB: 64 MB Linux + 64 MB video"
-flash      = "16 MB SPI NOR"
 wifi       = "AltoBeam ATBM6062S (SDIO, 2.4 GHz)"
-wifi_short = "ATBM6062S"
-wifi_driver = "AltoBeam atbm driver"
-kernel     = "4.4.94"
-isp_module = "tx_isp_t41"
-encoder    = "AVPU (H.264/H.265) + JPEG"
-features   = ["nna", "speaker", "sd", "ircut", "spotlight"]
-supports   = ["thingino2", "thingino1"]
+source     = "Thingino config, checked on a real camera"
 
 [[cameras]]
-id         = "wyze-cam-v3"
-name       = "Wyze Cam v3 (RTL8189FTV)"
-group      = "Wyze Cam v3"
-image      = "wyze_cam3_t31x_gc2053_rtl8189ftv"
-soc        = "Ingenic T31X"
+id         = "wyze_cam3_t31x_gc2053_rtl8189ftv"
 cpu        = "XBurst1, 1 core, 1392 MHz"
 sensor     = "GalaxyCore GC2053"
 resolution = "2 MP, 1920×1080"
 ram        = "128 MB: 99 MB Linux + 29 MB video"
-flash      = "16 MB SPI NOR"
 wifi       = "Realtek RTL8189FTV (SDIO, 2.4 GHz)"
-wifi_short = "RTL8189FTV"
-wifi_driver = "8189fs"
-kernel     = "3.10.14"
-isp_module = "tx_isp_t31"
-encoder    = "T31 H.264/H.265 + JPEG"
-features   = ["speaker", "sd", "ircut", "pwm"]
-supports   = ["thingino2", "thingino1"]
+source     = "Thingino config, checked on a real camera"
 
 # ---------------------------------------------------------------------------
 # Firmware versions. `ref` is a git ref in the thingino-firmware clone;
@@ -187,8 +174,8 @@ tag = "Consumer"
 [[lanes]]
 id = "net"
 label = "Network"
-sub = "wlan0"
-cols = 1
+sub = "wlan0 · eth0"
+cols = "auto"
 height = 52
 shape = "band"
 tag = "Network"
@@ -197,7 +184,8 @@ tag = "Network"
 id = "svc"
 label = "System services"
 sub = "BusyBox + friends"
-cols = 6
+cols = "auto"
+min_cols = 6
 height = 60
 shape = "pill"
 tag = "System service"
@@ -229,7 +217,7 @@ id = "sensor"
 lane = "hw"
 title = "Image sensor"
 sub = "{camera.sensor}"
-about = "Turns light into numbers: {camera.resolution}. Each frame leaves the sensor as raw brightness values with no colour processing yet, and travels over a MIPI camera link into the SoC."
+about = "Turns light into numbers. Each frame leaves the sensor as raw brightness values with no colour processing yet, and travels over a MIPI camera link into the SoC."
 starts = "Powered up and programmed by its sensor kernel module when `S11modules` loads it."
 upstream = ["ingenic-sdk"]
 
@@ -242,12 +230,13 @@ about = "The main chip: a MIPS CPU plus fixed-function hardware for jobs a CPU i
 starts = "Always on. U-Boot starts it from {camera.flash}."
 upstream = []
 
-[nodes.variant.wyze-cam-v4]
+[nodes.variant.nna]
 about = "The main chip: a MIPS CPU plus fixed-function hardware for jobs a CPU is too slow for. That means the ISP (image processing), the video encoder ({camera.encoder}), the IVS motion block and a neural-network accelerator (NNA). Programs never touch these blocks directly; they go through libimp and the kernel drivers. Memory: {camera.ram}."
 
 [[nodes]]
 id = "mic"
 lane = "hw"
+needs = ["audio"]
 title = "Mic + speaker"
 sub = "audio codec in the SoC"
 about = "The microphone and speaker connect to an audio codec inside the SoC. Sound comes in as raw PCM samples and goes out the same way."
@@ -257,6 +246,7 @@ upstream = ["ingenic-sdk"]
 [[nodes]]
 id = "ircut"
 lane = "hw"
+needs = ["ircut"]
 title = "IR-cut + IR LEDs"
 sub = "switched by GPIO"
 about = "A small filter slides in front of the lens to block infrared by day (true colours) and out at night, when the infrared LEDs light the scene. Both are driven by GPIO pins, simple on/off lines on the SoC. The pin numbers are in `/etc/thingino.json`."
@@ -267,8 +257,19 @@ upstream = []
 starts = "`S06ircut` sets a start position; `daynightd` takes over from `S10daynightd`."
 
 [[nodes]]
+id = "motors"
+lane = "hw"
+needs = ["ptz"]
+title = "Pan/tilt motors"
+sub = "stepper motors"
+about = "Two small stepper motors turn the camera left and right, up and down. Depending on the board, Thingino drives them through Ingenic's TCU/GPIO motor driver, or a motor chip (ms419xx or TMI8152) over SPI."
+starts = "The motor driver loads with the other kernel modules; `motors-daemon` starts from `/etc/init.d/S59motor`."
+upstream = ["motors"]
+
+[[nodes]]
 id = "wifichip"
 lane = "hw"
+needs = ["wifi"]
 title = "Wi-Fi chip"
 sub = "{camera.wifi_short}"
 about = "{camera.wifi}. Every byte that leaves the camera goes through this radio. It is often the real bottleneck: check the actual link rate before tuning the encoder."
@@ -307,6 +308,7 @@ upstream = ["ingenic-sdk"]
 [[nodes]]
 id = "audiok"
 lane = "kern"
+needs = ["audio"]
 title = "audio.ko"
 sub = "audio codec driver"
 about = "Kernel driver for the SoC's audio codec. libimp's audio API sits on top of it, which is what `rad` uses for microphone in and speaker out."
@@ -331,6 +333,7 @@ about = "Standard Linux GPIO lines plus Ingenic's PWM driver for dimming. The `d
 [[nodes]]
 id = "wifidrv"
 lane = "kern"
+needs = ["wifi"]
 title = "Wi-Fi driver"
 sub = "{camera.wifi_driver}"
 about = "The chip maker's Wi-Fi driver ({camera.wifi_driver}), packaged in thingino as `package/wifi-*`. It creates the `wlan0` network interface."
@@ -386,6 +389,7 @@ upstream = ["raptor"]
 [[nodes]]
 id = "rad"
 lane = "prod"
+needs = ["audio"]
 versions = ["thingino2"]
 title = "rad"
 sub = "audio daemon"
@@ -442,7 +446,7 @@ lane = "ring"
 kind = "video"
 title = "main"
 sub = "H.264 / H.265"
-about = "Encoded full-resolution video ({camera.resolution}) from the main channel."
+about = "Encoded full-resolution video from the main channel."
 file = "/dev/shm/rss_ring_main"
 
 [[nodes]]
@@ -483,12 +487,13 @@ starts = "Produced by `rvd` when motion detection is in use."
 upstream = ["raptor"]
 note = ""
 
-[nodes.variant.wyze-cam-v4]
+[nodes.variant.nna]
 about = "Not pictures: the motion grid from the SoC's IVS block (and NNA detections when enabled), which `rvd` reads and passes on to `rmd`."
 
 [[nodes]]
 id = "audio"
 lane = "ring"
+needs = ["audio"]
 kind = "audio"
 title = "audio"
 sub = "mic, encoded"
@@ -498,6 +503,7 @@ file = "/dev/shm/rss_ring_audio"
 [[nodes]]
 id = "speaker"
 lane = "ring"
+needs = ["audio"]
 kind = "audio"
 title = "speaker"
 sub = "to the speaker"
@@ -591,10 +597,22 @@ about = "OpenWrt's tiny web server, serving Thingino's web pages and CGI scripts
 [[nodes]]
 id = "wlan"
 lane = "net"
+needs = ["wifi"]
 title = "wlan0 · Wi-Fi to your LAN"
 sub = ""
 about = "The network interface the Wi-Fi driver creates on the {camera.wifi_short}. Everything the camera sends leaves through here."
 starts = "`S36wireless` and `S38wpa_supplicant` join the network; `S40network` gets an address by DHCP."
+upstream = []
+
+[[nodes]]
+id = "eth0"
+lane = "net"
+needs = ["eth"]
+standalone = true
+title = "eth0 · wired LAN"
+sub = ""
+about = "A wired Ethernet port. On cameras that have one, `eth0` carries the traffic instead of, or as well as, Wi-Fi."
+starts = "`S40network` brings it up and gets an address by DHCP."
 upstream = []
 
 # --- system services ---
@@ -610,11 +628,22 @@ upstream = ["mdnsd"]
 [[nodes]]
 id = "wpa"
 lane = "svc"
+needs = ["wifi"]
 title = "wpa_supplicant"
 sub = "Wi-Fi login · S38"
 about = "Joins your Wi-Fi network with the saved password and keeps the link up."
 starts = "`/etc/init.d/S38wpa_supplicant`."
 upstream = ["hostap"]
+
+[[nodes]]
+id = "motorsd"
+lane = "svc"
+needs = ["ptz"]
+title = "motors-daemon"
+sub = "pan/tilt · S59"
+about = "Moves the motors on request: the web UI's pan/tilt controls and the `motors` command send it positions and steps."
+starts = "`/etc/init.d/S59motor`."
+upstream = ["motors"]
 
 [[nodes]]
 id = "dropbear"
@@ -708,6 +737,9 @@ edges = [
   ["mic",      "audiok",    "audio",   "PCM samples"],
   ["wifichip", "wifidrv",   "mixed",   "radio"],
   ["gpio",     "ircut",     "control", "move filter, switch LEDs"],
+  ["gpio",     "motors",    "control", "step pulses"],
+  ["motorsd",  "gpio",      "control", "drive the motors", "up"],
+  ["webui",    "motorsd",   "control", "pan/tilt buttons"],
   ["isp",      "libimp",    "video",   "processed frames"],
   ["enc",      "libimp",    "video",   "encoded stream"],
   ["nna",      "libimp",    "detect",  "detections"],
@@ -768,7 +800,7 @@ edges = [
 # ---------------------------------------------------------------------------
 [[journey]]
 title = "Light hits the sensor."
-text = "The {camera.sensor} reads out a raw grid of brightness values ({camera.resolution}), 20 to 30 times a second, and sends it over the MIPI link into the SoC."
+text = "The {camera.sensor} reads out a raw grid of brightness values, 20 to 30 times a second, and sends it over the MIPI link into the SoC."
 
 [[journey]]
 title = "The ISP makes it a picture."
@@ -849,7 +881,7 @@ title = "Drivers"
 when = "S11modules"
 text = "Loads the ISP and sensor (`{camera.isp_module}`), encoder, audio and Wi-Fi ({camera.wifi_driver}) kernel modules."
 
-[boot.variant.wyze-cam-v4]
+[boot.variant.nna]
 text = "Loads the ISP and sensor (`{camera.isp_module}`), encoder, audio and Wi-Fi ({camera.wifi_driver}) kernel modules, plus `soc-nna` when detection is used."
 
 [[boot]]
@@ -879,6 +911,12 @@ text = "`S37cfg-autorestore` restores your backed-up config on the first boot af
 title = "Services"
 when = "S49–S60"
 text = "`ntpd` sets the clock, then `dropbear` (SSH), `crond`, `mdnsd`, and `uhttpd` for the web UI."
+
+[[boot]]
+needs = ["ptz"]
+title = "Motors"
+when = "S59motor"
+text = "Starts `motors-daemon`, which takes pan/tilt commands from the web UI and the `motors` command."
 
 [[boot]]
 title = "Late extras"
@@ -998,6 +1036,15 @@ name = "thingino-firmware package/thingino-daynightd"
 url = "https://github.com/themactep/thingino-firmware/tree/master/package/thingino-daynightd"
 package = "thingino-daynightd"
 what = "Day/night switching from ISP brightness (lives inside the firmware repo)"
+
+[[repos]]
+id = "motors"
+needs = ["ptz"]
+piece = "Pan/tilt"
+name = "thingino/thingino-motors"
+url = "https://github.com/thingino/thingino-motors"
+package = "thingino-motors"
+what = "motors-daemon and the motors command"
 
 [[repos]]
 id = "uhttpd"

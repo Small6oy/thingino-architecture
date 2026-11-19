@@ -6,7 +6,7 @@
         "ref": "upstream/master",
         "commit": "4aa1be2d5",
         "date": "2026-11-18",
-        "read": "2026-11-19T10:54:08"
+        "read": "2026-11-19T12:36:41"
       },
       "ingenic-sdk": {
         "version": "d93ddb926b838a05a60240cf6276466ee78daea4",
@@ -40,6 +40,10 @@
         "version": "2.0.0",
         "site": "$(THINGINO_DAYNIGHTD_PKGDIR)"
       },
+      "thingino-motors": {
+        "version": "b73170f7eb2b75662003cced223165ca5ad7428e",
+        "site": "https://github.com/Lu-Fi/thingino-motors.git"
+      },
       "thingino-uhttpd": {
         "version": "93b05e0b65d91c23c5aa8fdde378df1f174ec71d",
         "site": "https://git.openwrt.org/project/uhttpd.git"
@@ -55,7 +59,7 @@
         "ref": "upstream/ciao",
         "commit": "e822f9d2d",
         "date": "2026-11-17",
-        "read": "2026-11-19T10:54:11"
+        "read": "2026-11-19T12:36:45"
       },
       "ingenic-sdk": {
         "version": "9bb8ad519947deac4282f322da1beb14e17060c0",
@@ -88,6 +92,10 @@
       "thingino-daynightd": {
         "version": "2.0.0",
         "site": "$(THINGINO_DAYNIGHTD_PKGDIR)"
+      },
+      "thingino-motors": {
+        "version": "b73170f7eb2b75662003cced223165ca5ad7428e",
+        "site": "https://github.com/Lu-Fi/thingino-motors.git"
       },
       "thingino-uhttpd": {
         "version": "93b05e0b65d91c23c5aa8fdde378df1f174ec71d",

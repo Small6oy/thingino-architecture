@@ -250,7 +250,7 @@ const DATA = /*__DATA__*/null;
     document.title = P.title + ' · Signal Path';
     $('brand').textContent = P.title;
     $('eyebrow').textContent = P.eyebrow || '';
-    $('spec').innerHTML = (P.spec || []).map(([k, v]) => `<li><b>${esc(k)}</b>${esc(TC.plain(v))}</li>`).join('');
+    $('spec').innerHTML = TC.specRows(P).map(([k, v]) => `<li><b>${esc(k)}</b>${esc(TC.plain(v))}</li>`).join('');
 
     // lanes, top to bottom
     const track = $('track');

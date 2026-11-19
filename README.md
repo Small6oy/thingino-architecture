@@ -8,7 +8,8 @@ python3 build.py --open        # check the data, build the pages, open the main 
 
 Python 3.11+, standard library only. The pages are generated, so they aren't in git.
 
-- `architecture.toml`: all the content (cameras, versions, lanes, parts, connections, boot and journey steps, repos)
+- `architecture.toml`: all the content (versions, lanes, parts, connections, boot and journey steps, repos, hand-checked camera facts)
+- `import_cameras.py` → `cameras.json`: every Thingino camera config, read from a thingino-firmware checkout
 - `build.py`: validates every camera × version view and writes the pages
 - `core.js`, `template*.html`: the shared data logic and one template per layout
 

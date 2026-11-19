@@ -11,9 +11,10 @@ const TC = (() => {
     .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
   const plain = s => String(s ?? '').replace(/`([^`]+)`/g, '$1').replace(/\*\*?([^*]+)\*\*?/g, '$1').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
 
-  const fill = (s, cam, ver) => String(s).replace(/\{(camera|version)\.([A-Za-z0-9_-]+)\}/g, (m, a, k) => {
+  // {camera.x} / {version.x}; {camera.x?} is optional and becomes '' when the field is missing
+  const fill = (s, cam, ver) => String(s).replace(/\{(camera|version)\.([A-Za-z0-9_-]+)(\?)?\}/g, (m, a, k, opt) => {
     const v = (a === 'camera' ? cam : ver)[k];
-    return v == null ? m : (Array.isArray(v) ? v.join(', ') : String(v));
+    return v == null ? (opt ? '' : m) : (Array.isArray(v) ? v.join(', ') : String(v));
   });
   const deepFill = (o, cam, ver) => typeof o === 'string' ? fill(o, cam, ver)
     : Array.isArray(o) ? o.map(x => deepFill(x, cam, ver))
@@ -23,10 +24,13 @@ const TC = (() => {
     && (!it.needs || it.needs.every(f => (cam.features || []).includes(f)));
   const resolve = (it, cam, ver) => {
     const o = { ...it }; delete o.variant;
-    for (const k of [ver.id, cam.id]) if (it.variant && it.variant[k]) Object.assign(o, it.variant[k]);
+    // variants: version id, then each camera feature (e.g. "nna"), then camera id
+    for (const k of [ver.id, ...(cam.features || []), cam.id]) if (it.variant && it.variant[k]) Object.assign(o, it.variant[k]);
     return deepFill(o, cam, ver);
   };
   const supports = (c, v) => !c.supports || c.supports.includes(v.id);
+  // spec rows whose text is empty once placeholders are filled (only separators left) are dropped
+  const specRows = page => (page.spec || []).filter(([, v]) => plain(v).replace(/[\s·,:+-]/g, '') !== '');
 
   /** Everything a layout needs for one camera + version. */
   function view(D, cam, ver) {
@@ -59,7 +63,12 @@ const TC = (() => {
     if (!supports(cam, ver)) ver = D.versions.find(v => supports(cam, v)) || D.versions[0];
     return { cam, ver };
   }
-  const fromHash = D => { const [c, v] = location.hash.slice(1).split('+'); return pick(D, c, v); };
+  // "#<camera>+<version>". Camera ids can contain "+" (e.g. "..._eth+atbm6031"), version ids can't: split on the last one.
+  const parseHash = () => {
+    const h = decodeURIComponent(location.hash.slice(1)), i = h.lastIndexOf('+');
+    return i < 0 ? [h, ''] : [h.slice(0, i), h.slice(i + 1)];
+  };
+  const fromHash = D => { const [c, v] = parseHash(); return pick(D, c, v); };
   const toHash = (cam, ver) => { try { history.replaceState(null, '', '#' + cam.id + '+' + ver.id); } catch (e) { /* ignore */ } };
 
   /** All nodes reachable upstream and downstream of id (for "trace the whole path"). */
@@ -85,5 +94,5 @@ const TC = (() => {
     new MutationObserver(fn).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   };
 
-  return { esc, md, plain, fill, visible, resolve, supports, view, pick, fromHash, toHash, trace, css, onTheme };
+  return { esc, md, plain, specRows, parseHash, fill, visible, resolve, supports, view, pick, fromHash, toHash, trace, css, onTheme };
 })();
