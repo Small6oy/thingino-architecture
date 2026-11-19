@@ -39,8 +39,6 @@ CORE = HERE / "core.js"          # shared data logic, added to every template at
 # Layouts: template -> page. Each reads the same data; add a line to add a layout.
 LAYOUTS = [
     ("template.html",          "architecture.html"),           # stacked lanes on a canvas (the original)
-    ("template-signal.html",   "architecture-signal.html"),    # left-to-right signal path, side drawer
-    ("template-explorer.html", "architecture-explorer.html"),  # three-pane explorer, focus graph
 ]
 OUT = HERE / LAYOUTS[0][1]
 def _default_firmware() -> Path:

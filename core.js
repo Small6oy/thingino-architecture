@@ -71,22 +71,6 @@ const TC = (() => {
   const fromHash = D => { const [c, v] = parseHash(); return pick(D, c, v); };
   const toHash = (cam, ver) => { try { history.replaceState(null, '', '#' + cam.id + '+' + ver.id); } catch (e) { /* ignore */ } };
 
-  /** All nodes reachable upstream and downstream of id (for "trace the whole path"). */
-  function trace(V, id) {
-    const seen = new Set([id]), walk = (start, dir) => {
-      const stack = [start];
-      while (stack.length) {
-        const cur = stack.pop();
-        for (const e of V.edges) {
-          const nxt = dir === 'down' ? (e.from === cur ? e.to : null) : (e.to === cur ? e.from : null);
-          if (nxt && !seen.has(nxt) && e.kind !== 'control') { seen.add(nxt); stack.push(nxt); }
-        }
-      }
-    };
-    walk(id, 'down'); walk(id, 'up');
-    return seen;
-  }
-
   // Theme colours for canvas/SVG drawing, read from CSS custom properties.
   const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   const onTheme = fn => {
@@ -94,5 +78,5 @@ const TC = (() => {
     new MutationObserver(fn).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   };
 
-  return { esc, md, plain, specRows, parseHash, fill, visible, resolve, supports, view, pick, fromHash, toHash, trace, css, onTheme };
+  return { esc, md, plain, specRows, parseHash, fill, visible, resolve, supports, view, pick, fromHash, toHash, css, onTheme };
 })();

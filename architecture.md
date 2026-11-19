@@ -2,13 +2,7 @@
 
 An interactive page that shows how Thingino works on a given camera and firmware version. It covers the hardware, kernel drivers, libimp (and raptor-hal), the streamer, the network and where the stream ends up. It also includes the boot order and the upstream repo behind each piece. Pick a camera and a firmware version at the top; the diagram, text, boot steps and repo pins all change to match.
 
-**Open it:** three layouts of the same data, each one self-contained file you can double-click:
-
-| Page | Layout | Good for |
-|---|---|---|
-| [architecture.html](architecture.html) | **A · Stacked lanes**: the canvas diagram, top to bottom, animated packets | The whole system at a glance |
-| [architecture-signal.html](architecture-signal.html) | **B · Signal Path**: left-to-right signal chain in a blueprint style, ports and wires, side drawer, "whole path" tracing, boot steps on an S00–S99 ruler | Following one signal end to end |
-| [architecture-explorer.html](architecture-explorer.html) | **C · Explorer**: app with a searchable parts list, stack minimap, focus graph (inputs, part, outputs), back history, and tabs for journey, boot and sources | Learning part by part |
+**Open it:** [architecture.html](architecture.html), one self-contained file you can double-click, built by `python3 build.py`.
 
 A view can be linked directly: `architecture.html#<camera config>+<version>`, for example `architecture.html#wyze_cam3_t31x_gc2053_rtl8189ftv+thingino1`.
 
@@ -23,7 +17,7 @@ A view can be linked directly: `architecture.html#<camera config>+<version>`, fo
 | `architecture.toml` | **All the content**: versions, lanes, boxes, connections, boot and journey steps, repos, and hand-checked camera facts | Yes, this is where changes go |
 | `import_cameras.py` | Reads Thingino's camera configs and writes `cameras.json` | When Thingino's config format changes |
 | `cameras.json` | Every Thingino camera config as data (generated, committed) | No: re-run the importer |
-| `template.html`, `template-signal.html`, `template-explorer.html` | One template per layout: look and behaviour only | To change a layout |
+| `template.html` | The page: look and behaviour only | To change the page |
 | `core.js` | Shared data logic every layout uses: conditions, variants, placeholders, markup, path tracing. build.py adds it to each template at `/*__CORE__*/` | When the data model changes |
 | `build.py` | The engine: merges the cameras, checks every camera × version view, refreshes pins, writes the pages | Rarely |
 | `pins.json` | Commit pins per version, read by `--pins` (generated) | No |
