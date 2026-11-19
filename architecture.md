@@ -12,7 +12,9 @@ An interactive page that shows how Thingino works on a given camera and firmware
 
 A view can be linked directly: `architecture.html#<camera config>+<version>`, for example `architecture.html#wyze_cam3_t31x_gc2053_rtl8189ftv+thingino1`.
 
-**Scope:** generic Thingino only. No household data (IPs, hostnames, NVR servers, personal forks or add-ons such as rhkd). Camera docs elsewhere in `research/thingino/` hold that.
+**Live:** <https://small6oy.github.io/thingino-architecture/> (built by GitHub Actions on every push to `main`).
+
+**Scope:** generic Thingino only: no site-specific data such as IP addresses, hostnames, NVR servers or add-ons that aren't part of Thingino.
 
 ## Files
 
@@ -30,15 +32,16 @@ A view can be linked directly: `architecture.html#<camera config>+<version>`, fo
 ## Commands
 
 ```sh
-cd research/thingino/architecture
 python3 build.py              # check every view and write architecture.html
 python3 build.py --open       # same, then open it
 python3 build.py --watch      # rebuild on every save of the .toml or the template
 python3 build.py --check      # check only
-python3 build.py --pins       # re-read pins for every version from workspace/projects/thingino-firmware
+python3 build.py --pins       # re-read pins for every version from a thingino-firmware checkout
 python3 build.py --pins --fetch   # git fetch --all first, so upstream refs are current
 python3 import_cameras.py     # regenerate cameras.json from the same checkout (about 30 s on the share)
 ```
+
+The thingino-firmware checkout is `$THINGINO_FIRMWARE`, else `../thingino-firmware` next to this repo. It needs the `upstream/master` and `upstream/ciao` refs (a remote named `upstream` pointing at themactep/thingino-firmware); change `ref` in `[[versions]]` to suit your clone. Only `--pins` and the importer need it: `build.py` on its own uses the committed `pins.json` and `cameras.json`.
 
 Python 3.11+ with the standard library only (uses `tomllib`). Each build prints a summary such as `467 camera x version views checked; 18-46 boxes, 15-52 lines`.
 
@@ -104,4 +107,4 @@ It warns about boxes or lines that never show in any view, boxes with no lines (
 
 ## Sources
 
-The raptor README and `config/S31raptor` (`workspace/projects/raptor`), thingino-firmware `package/*/*.mk` and init scripts at `upstream/master` and `upstream/ciao`, `package/thingino-daynightd/files/README.md`, the camera configs and SoC database described above, and [../camera-stats.md](../camera-stats.md) for the hand-checked Wyze facts.
+The [raptor](https://github.com/gtxaspec/raptor) README and `config/S31raptor`; [thingino-firmware](https://github.com/themactep/thingino-firmware) `package/*/*.mk` and init scripts at `master` and `ciao`, `package/thingino-daynightd/files/README.md`, and the camera configs and SoC database described above. The Wyze Cam v3 and v4 overrides were read from `/proc`, the kernel log and the ISP on real cameras (2026-11-17).

@@ -43,8 +43,19 @@ LAYOUTS = [
     ("template-explorer.html", "architecture-explorer.html"),  # three-pane explorer, focus graph
 ]
 OUT = HERE / LAYOUTS[0][1]
-# research/thingino/architecture -> workspace/projects/thingino-firmware
-DEFAULT_FIRMWARE = HERE.parents[2] / "projects" / "thingino-firmware"
+def _default_firmware() -> Path:
+    """A thingino-firmware checkout: $THINGINO_FIRMWARE, else ../thingino-firmware next to this repo,
+    else ../../../projects/thingino-firmware (the author's workspace layout)."""
+    import os
+    if os.environ.get("THINGINO_FIRMWARE"):
+        return Path(os.environ["THINGINO_FIRMWARE"]).expanduser()
+    for cand in (HERE.parent / "thingino-firmware", HERE.parents[2] / "projects" / "thingino-firmware"):
+        if (cand / ".git").exists():
+            return cand
+    return HERE.parent / "thingino-firmware"
+
+
+DEFAULT_FIRMWARE = _default_firmware()
 
 EDGE_KINDS = {"video", "audio", "control", "detect", "mixed"}
 COLOURS = {"video", "audio", "control", "detect", "accent"}
@@ -108,7 +119,7 @@ def read_pins(firmware: Path, versions: list[dict], packages: list[str], fetch: 
             site = re.search(rf"^{var}_SITE\s*=\s*(\S+)", text, re.M)
             if version:
                 pins[pkg] = {"version": version.group(1), "site": site.group(1) if site else None}
-        out[v["id"]] = {"_source": {"path": str(firmware), "ref": label, "commit": commit, "date": date,
+        out[v["id"]] = {"_source": {"checkout": firmware.name, "ref": label, "commit": commit, "date": date,
                                     "read": dt.datetime.now().isoformat(timespec="seconds")}, **pins}
         print(f"pins: {v['id']:<12} {label} @ {commit} ({date}): {len(pins)} packages")
     return {"versions": out}

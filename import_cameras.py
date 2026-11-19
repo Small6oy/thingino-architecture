@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate cameras.json from Thingino's own camera configs.
 
-    python3 import_cameras.py             read workspace/projects/thingino-firmware
+    python3 import_cameras.py             read the thingino-firmware checkout ($THINGINO_FIRMWARE or ../thingino-firmware)
     python3 import_cameras.py --firmware DIR
     python3 import_cameras.py --fetch     git fetch --all in the checkout first
     python3 import_cameras.py --testing   also include configs/cameras-testing
@@ -33,7 +33,19 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 OUT = HERE / "cameras.json"
-DEFAULT_FIRMWARE = HERE.parents[2] / "projects" / "thingino-firmware"
+def _default_firmware() -> Path:
+    """A thingino-firmware checkout: $THINGINO_FIRMWARE, else ../thingino-firmware next to this repo,
+    else ../../../projects/thingino-firmware (the author's workspace layout)."""
+    import os
+    if os.environ.get("THINGINO_FIRMWARE"):
+        return Path(os.environ["THINGINO_FIRMWARE"]).expanduser()
+    for cand in (HERE.parent / "thingino-firmware", HERE.parents[2] / "projects" / "thingino-firmware"):
+        if (cand / ".git").exists():
+            return cand
+    return HERE.parent / "thingino-firmware"
+
+
+DEFAULT_FIRMWARE = _default_firmware()
 TIERS = {"cameras": "stable", "cameras-exp": "experimental", "cameras-secureboot": "secure boot"}
 
 ARCH_CPU = {"xburst1": "XBurst1, 1 core", "xburst2": "XBurst2, 2 cores"}

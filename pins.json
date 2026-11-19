@@ -2,7 +2,7 @@
   "versions": {
     "thingino2": {
       "_source": {
-        "path": "thingino-firmware",
+        "checkout": "thingino-firmware",
         "ref": "upstream/master",
         "commit": "4aa1be2d5",
         "date": "2026-11-18",
@@ -55,7 +55,7 @@
     },
     "thingino1": {
       "_source": {
-        "path": "thingino-firmware",
+        "checkout": "thingino-firmware",
         "ref": "upstream/ciao",
         "commit": "e822f9d2d",
         "date": "2026-11-17",

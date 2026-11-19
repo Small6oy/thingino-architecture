@@ -2,6 +2,8 @@
 
 An interactive, data-driven diagram of how a [Thingino](https://thingino.com/) camera works: hardware, kernel drivers, libimp and raptor-hal, the streamer daemons, shared-memory rings, consumers, network and outputs. You pick a camera and a firmware version, and the diagram, boot order and upstream repo pins follow.
 
+**Open it: <https://small6oy.github.io/thingino-architecture/>** (also [Signal Path](https://small6oy.github.io/thingino-architecture/architecture-signal.html) and [Explorer](https://small6oy.github.io/thingino-architecture/architecture-explorer.html) layouts).
+
 ```sh
 python3 build.py --open        # check the data, build the pages, open the main one
 ```
